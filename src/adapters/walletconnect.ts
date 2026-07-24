@@ -34,6 +34,8 @@ export interface WalletConnectAdapterOptions {
   client?: WalletConnectSignClient | unknown;
   /** Optional active session object or mock session */
   session?: WalletConnectSession | unknown;
+  /** Milliseconds to wait for the connect handshake before rejecting. Defaults to 30000. */
+  connectTimeoutMs?: number;
 }
 
 /**
@@ -46,6 +48,7 @@ export class WalletConnectAdapter implements WalletAdapter {
   private readonly metadata?: WalletConnectAppMetadata | undefined;
   private client: WalletConnectSignClient | null;
   private session: WalletConnectSession | null;
+  private readonly connectTimeoutMs: number;
 
   constructor(options: WalletConnectAdapterOptions = {}) {
     this.projectId = options.projectId;
@@ -53,6 +56,7 @@ export class WalletConnectAdapter implements WalletAdapter {
     this.metadata  = options.metadata;
     this.client    = (options.client as WalletConnectSignClient) ?? null;
     this.session   = (options.session as WalletConnectSession) ?? null;
+    this.connectTimeoutMs = options.connectTimeoutMs ?? 30000;
   }
 
   /**
@@ -89,20 +93,26 @@ export class WalletConnectAdapter implements WalletAdapter {
     }
 
     if (this.client && typeof this.client.connect === 'function') {
-      const connectResult = await this.client.connect({
-        requiredNamespaces: {
-          stellar: {
-            methods: ['stellar_signTransaction', 'stellar_signXdr', 'soroban_signTransaction'],
-            chains: [this.chainId],
-            events: ['accountsChanged', 'chainChanged'],
+      const connectResult = await this._withTimeout(
+        this.client.connect({
+          requiredNamespaces: {
+            stellar: {
+              methods: ['stellar_signTransaction', 'stellar_signXdr', 'soroban_signTransaction'],
+              chains: [this.chainId],
+              events: ['accountsChanged', 'chainChanged'],
+            },
           },
-        },
-      });
+        }),
+        'WalletConnect connect() handshake'
+      );
 
       if (connectResult.session) {
         this.session = connectResult.session;
       } else if (connectResult.approval) {
-        this.session = await connectResult.approval();
+        this.session = await this._withTimeout(
+          connectResult.approval(),
+          'WalletConnect approval()'
+        );
       }
     }
 
@@ -112,6 +122,22 @@ export class WalletConnectAdapter implements WalletAdapter {
     }
 
     return pubKey;
+  }
+
+  /**
+   * Races a network-bound promise against a timeout so that a dropped
+   * connection during the handshake rejects cleanly instead of hanging
+   * the init promise indefinitely (see #116).
+   */
+  private _withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
+    let timer: ReturnType<typeof setTimeout>;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        reject(new Error(`${label} timed out after ${this.connectTimeoutMs}ms (possible network interruption)`));
+      }, this.connectTimeoutMs);
+    });
+
+    return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
   }
 
   /**
