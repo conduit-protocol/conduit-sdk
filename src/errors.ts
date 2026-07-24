@@ -176,3 +176,59 @@ export class ConduitError extends Error {
     return new ConduitError(contract, code, `${MESSAGES_BY_CONTRACT[contract][code]} (${message})`);
   }
 }
+
+
+/**
+ * Thrown when an RPC node responds with HTTP 429 (Too Many Requests) or
+ * an equivalent JSON-RPC rate-limit error code, instead of the previous
+ * generic/unclassified error that made rate limiting indistinguishable
+ * from any other network failure. See #120.
+ */
+export class RateLimitError extends Error {
+  /** Milliseconds to wait before retrying, parsed from a Retry-After header if present. */
+  readonly retryAfterMs: number | undefined;
+
+  constructor(message: string, retryAfterMs?: number) {
+    super(message);
+    this.name = 'RateLimitError';
+    this.retryAfterMs = retryAfterMs;
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+
+  /**
+   * Detects a rate-limit condition from a raw error thrown by the RPC
+   * client and converts it into a typed RateLimitError. Handles two shapes:
+   *
+   * 1. An axios-style error (network-level 429), shaped like
+   *    `{ response: { status: 429, headers } }`.
+   * 2. A raw JSON-RPC error object (rpc/jsonrpc.js does `throw response.data.error`
+   *    directly, so it is a plain object, not an Error instance), shaped
+   *    like `{ code: -32029 }`.
+   *
+   * Returns null if `raw` is not a rate-limit error, so callers can fall
+   * back to their existing error handling.
+   */
+  static fromRpcError(raw: unknown): RateLimitError | null {
+    if (!raw || typeof raw !== 'object') return null;
+
+    const response = (raw as { response?: { status?: number; headers?: Record<string, unknown> } }).response;
+    if (response?.status === 429) {
+      const retryAfterHeader = response.headers?.['retry-after'];
+      const retryAfterMs = retryAfterHeader != null ? Number(retryAfterHeader) * 1000 : undefined;
+      return new RateLimitError(
+        'RPC node rate limit exceeded (429 Too Many Requests). Back off and retry.',
+        retryAfterMs,
+      );
+    }
+
+    // De facto "too many requests" JSON-RPC error code used by several
+    // Soroban RPC providers, plus a literal 429 in case a provider reuses
+    // the HTTP status as the JSON-RPC error code.
+    const code = (raw as { code?: unknown }).code;
+    if (code === 429 || code === -32029) {
+      return new RateLimitError('RPC node rate limit exceeded (JSON-RPC error). Back off and retry.');
+    }
+
+    return null;
+  }
+}

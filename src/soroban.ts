@@ -15,6 +15,7 @@ import {
 } from '@stellar/stellar-sdk';
 import type { Network } from './types/index.js';
 import type { Signer } from './signer.js';
+import { RateLimitError } from './errors.js';
 
 export const DEFAULT_RPC: Record<Network, string> = {
   mainnet: 'https://soroban-mainnet.stellar.org',
@@ -43,7 +44,14 @@ export async function buildContractCallTx(
   args:        xdr.ScVal[],
 ): Promise<ReturnType<TransactionBuilder['build']>> {
   const server  = new SorobanRpc.Server(rpcUrl, { allowHttp: rpcUrl.startsWith('http://') });
-  const account = await server.getAccount(caller);
+
+  let account;
+  try {
+    account = await server.getAccount(caller);
+  } catch (err) {
+    throw RateLimitError.fromRpcError(err) ?? err;
+  }
+
   const contract = new Contract(contractId);
 
   return new TransactionBuilder(account, {
@@ -68,7 +76,12 @@ export async function invokeContract(
   const server = new SorobanRpc.Server(rpcUrl, { allowHttp: rpcUrl.startsWith('http://') });
 
   // Simulate
-  const simResult = await server.simulateTransaction(tx);
+  let simResult;
+  try {
+    simResult = await server.simulateTransaction(tx);
+  } catch (err) {
+    throw RateLimitError.fromRpcError(err) ?? err;
+  }
   if (SorobanRpc.Api.isSimulationError(simResult)) {
     throw new Error(`Simulation failed: ${simResult.error}`);
   }
@@ -80,7 +93,12 @@ export async function invokeContract(
   await signer.sign(assembled);
 
   // Submit
-  const sent = await server.sendTransaction(assembled);
+  let sent;
+  try {
+    sent = await server.sendTransaction(assembled);
+  } catch (err) {
+    throw RateLimitError.fromRpcError(err) ?? err;
+  }
   if (sent.status === 'ERROR') {
     throw new Error(`Transaction rejected: ${JSON.stringify(sent.errorResult)}`);
   }
@@ -89,7 +107,12 @@ export async function invokeContract(
   const hash = sent.hash;
   for (let i = 0; i < 30; i++) {
     await sleep(1000);
-    const status = await server.getTransaction(hash);
+    let status;
+    try {
+      status = await server.getTransaction(hash);
+    } catch (err) {
+      throw RateLimitError.fromRpcError(err) ?? err;
+    }
     if (status.status === SorobanRpc.Api.GetTransactionStatus.SUCCESS) {
       return hash;
     }
@@ -109,7 +132,13 @@ export async function simulateReadOnly(
   tx:         ReturnType<TransactionBuilder['build']>,
 ): Promise<xdr.ScVal> {
   const server = new SorobanRpc.Server(rpcUrl, { allowHttp: rpcUrl.startsWith('http://') });
-  const result = await server.simulateTransaction(tx);
+
+  let result;
+  try {
+    result = await server.simulateTransaction(tx);
+  } catch (err) {
+    throw RateLimitError.fromRpcError(err) ?? err;
+  }
 
   if (SorobanRpc.Api.isSimulationError(result)) {
     throw new Error(`Simulation error: ${result.error}`);
