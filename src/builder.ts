@@ -258,12 +258,19 @@ export interface BatchOperation {
   params: Record<string, unknown>;
 }
 
+export interface BatchExecuteOptions {
+  maxBatchSize?: number;
+}
+
 export interface BatchResult {
   success: boolean;
   operations: number;
   xdr: string;
+  chunks?: number;
   errors?: string[];
 }
+
+const DEFAULT_MAX_BATCH_SIZE = 50;
 
 /**
  * Validate that the input is a non-null, non-empty array of objects.
@@ -314,9 +321,13 @@ export class ConduitBatcher {
    * `JSON.stringify` calls produce valid payloads on Safari / WebKit
    * browsers (which serialise bigint as `{}` instead of throwing).
    *
-   * @throws {Error} If payload is null, undefined, non-array, or contains invalid items.
+   * Invalid payloads return `{ success: false, errors: [...] }` rather
+   * than throwing. Only a destroyed batcher causes a throw.
    */
-  static execute(streams: Record<string, unknown>[]): BatchResult {
+  static execute(
+    streams: Record<string, unknown>[],
+    options?: BatchExecuteOptions,
+  ): BatchResult {
     if (ConduitBatcher.isDestroyed) {
       throw new Error('ConduitBatcher has been destroyed');
     }
@@ -329,22 +340,16 @@ export class ConduitBatcher {
         xdr: '',
         errors: validationErrors,
       };
-  static execute(streams: Record<string, unknown>[]) {
-    if (!Array.isArray(streams) || streams.length === 0) {
-      throw new Error('Streams payload array cannot be null, undefined, or empty');
-    }
-    for (const stream of streams) {
-      if (stream === null || stream === undefined || typeof stream !== 'object') {
-        throw new Error('Stream item inside batch cannot be null or undefined');
-      }
     }
 
     const maxBatchSize = options?.maxBatchSize ?? DEFAULT_MAX_BATCH_SIZE;
     const sanitized = streams.map(bigintSafeStringify);
+    const chunks = sanitized.length === 0 ? 0 : Math.ceil(sanitized.length / maxBatchSize);
+
     return {
       success: true,
       operations: sanitized.length,
-      chunks: chunks.length,
+      chunks,
       xdr: 'AAAA...mock...batch...XDR',
     };
   }

@@ -62,12 +62,13 @@ describe('StreamBuilder Network Interruption & Payload Queueing Regression Tests
     builder.cleanup();
   });
 
-  it('throws boundary check error in ConduitBatcher when stream item is null or empty array', () => {
-    expect(() => ConduitBatcher.execute([])).toThrow(
-      'Streams payload array cannot be null, undefined, or empty'
-    );
-    expect(() => ConduitBatcher.execute([null as any])).toThrow(
-      'Stream item inside batch cannot be null or undefined'
-    );
+  it('returns validation errors from ConduitBatcher for invalid batch items', () => {
+    const emptyResult = ConduitBatcher.execute([]);
+    expect(emptyResult.success).toBe(true);
+    expect(emptyResult.operations).toBe(0);
+
+    const nullItemResult = ConduitBatcher.execute([null as any]);
+    expect(nullItemResult.success).toBe(false);
+    expect(nullItemResult.errors![0]).toContain('cannot be null or undefined');
   });
 });

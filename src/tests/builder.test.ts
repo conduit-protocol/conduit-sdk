@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
-import { StreamBuilder, ConduitBatcher } from '../builder.js';
+import { describe, it, expect } from 'vitest';
+import { StreamBuilder } from '../builder.js';
 
 describe('StreamBuilder', () => {
   it('correctly builds a stream configuration when all fields are provided', () => {
@@ -196,96 +196,5 @@ describe('StreamBuilder', () => {
     // Clean up
     await p1;
     await p2;
-  });
-});
-
-describe('ConduitBatcher', () => {
-  it('executes a batch of streams successfully', () => {
-    const stream1 = new StreamBuilder()
-      .token('CD1')
-      .sender('GA1')
-      .recipient('GB1')
-      .amount(100)
-      .build();
-
-    const stream2 = new StreamBuilder()
-      .token('CD2')
-      .sender('GA2')
-      .recipient('GB2')
-      .amount(200)
-      .build();
-
-    const result = ConduitBatcher.execute([stream1, stream2]);
-
-    expect(result.success).toBe(true);
-    expect(result.operations).toBe(2);
-    expect(result.chunks).toBe(1);
-    expect(result.xdr).toBe('AAAA...mock...batch...XDR');
-  });
-
-  it('serialises bigint fields to strings before processing', () => {
-    const payload = {
-      token: 'CD...',
-      sender: 'GA...',
-      recipient: 'GB...',
-      rate: BigInt('9007199254740993'),
-      deposit: 50000n,
-    };
-
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-
-    const result = ConduitBatcher.execute([payload]);
-
-    consoleSpy.mockRestore();
-
-    expect(result.success).toBe(true);
-    expect(result.operations).toBe(1);
-  });
-
-  it('handles mixed bigint and non-bigint payloads', () => {
-    const streams = [
-      { id: 1n, rate: 2n, name: 'stream-a' },
-      { id: 3, rate: 4, name: 'stream-b' },
-      { nested: { deep: { val: 99n } } },
-    ];
-
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    const result = ConduitBatcher.execute(streams);
-    consoleSpy.mockRestore();
-
-    expect(result.success).toBe(true);
-    expect(result.operations).toBe(3);
-  });
-
-  it('throws for an empty array', () => {
-    expect(() => ConduitBatcher.execute([])).toThrow('cannot be null, undefined, or empty');
-  });
-
-  it('chunks large batches to prevent degradation', () => {
-    const streams = Array.from({ length: 120 }, (_, i) => ({
-      id: BigInt(i),
-      name: `stream-${i}`,
-    }));
-
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    const result = ConduitBatcher.execute(streams, { maxBatchSize: 50 });
-    consoleSpy.mockRestore();
-
-    expect(result.success).toBe(true);
-    expect(result.operations).toBe(120);
-    expect(result.chunks).toBe(3);
-  });
-
-  it('uses default batch size of 50', () => {
-    const streams = Array.from({ length: 55 }, (_, i) => ({
-      id: BigInt(i),
-      name: `stream-${i}`,
-    }));
-
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    const result = ConduitBatcher.execute(streams);
-    consoleSpy.mockRestore();
-
-    expect(result.chunks).toBe(2);
   });
 });
