@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ConduitBatcher, StreamBuilder, type BatchOperation } from '../builder.js';
 
 describe('ConduitBatcher', () => {
@@ -336,11 +336,16 @@ describe('ConduitBatcher', () => {
 
   describe('cleanup, destroy, and reset', () => {
     it('cleanup resolves pending executeAsync calls with an error', async () => {
+      const processQueueSpy = vi
+        .spyOn(ConduitBatcher as unknown as { processQueue: () => Promise<void> }, 'processQueue')
+        .mockImplementation(() => Promise.resolve());
+
       const pending = ConduitBatcher.executeAsync([
         { method: 'create', params: { token: 'CD1' } },
       ]);
 
       ConduitBatcher.cleanup();
+      processQueueSpy.mockRestore();
 
       const result = await pending;
       expect(result.success).toBe(false);

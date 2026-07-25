@@ -303,7 +303,7 @@ function validatePayload(streams: unknown): string[] {
 
 interface PendingBatch {
   operations: BatchOperation[];
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
   resolve: (result: BatchResult) => void;
 }
 
