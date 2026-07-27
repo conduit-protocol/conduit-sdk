@@ -142,6 +142,22 @@ export class StreamsModule {
       startTime, clawbackEnabled = false,
     } = params;
 
+    // Client-side validation to prevent invalid payloads
+    if (!recipient || typeof recipient !== 'string' || !recipient.trim()) {
+      throw new Error('Invalid recipient address: must be a non-empty string');
+    }
+    if (!token || typeof token !== 'string' || !token.trim()) {
+      throw new Error('Invalid token address: must be a non-empty string');
+    }
+    if (!depositAmount || typeof depositAmount !== 'string' || !depositAmount.trim()) {
+      throw new Error('Invalid deposit amount: must be a non-empty string');
+    }
+    if (durationSeconds !== undefined && (typeof durationSeconds !== 'number' || durationSeconds <= 0)) {
+      throw new Error('Invalid durationSeconds: must be a positive number');
+    }
+    if (ratePerSecond !== undefined && (typeof ratePerSecond !== 'string' || !ratePerSecond.trim())) {
+      throw new Error('Invalid ratePerSecond: must be a non-empty string');
+    }
     if (!durationSeconds && !ratePerSecond) {
       throw new Error('Either durationSeconds or ratePerSecond must be provided');
     }

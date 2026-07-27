@@ -79,6 +79,8 @@ export function useWithdrawStream(walletAddress: string) {
       { query: GET_RECENT_STREAMS, variables: { walletAddress, limit: 20 } },
     ],
     awaitRefetchQueries: true,
+    // Surface errors (including timeouts) instead of leaving loading=true forever
+    errorPolicy: 'all',
   });
   return { withdraw: mutate, ...result };
 }
@@ -90,6 +92,8 @@ export function usePauseStream(walletAddress: string) {
       { query: GET_RECENT_STREAMS, variables: { walletAddress, limit: 20 } },
     ],
     awaitRefetchQueries: true,
+    // Surface errors (including timeouts) instead of leaving loading=true forever
+    errorPolicy: 'all',
   });
   return { pause: mutate, ...result };
 }
@@ -101,6 +105,8 @@ export function useResumeStream(walletAddress: string) {
       { query: GET_RECENT_STREAMS, variables: { walletAddress, limit: 20 } },
     ],
     awaitRefetchQueries: true,
+    // Surface errors (including timeouts) instead of leaving loading=true forever
+    errorPolicy: 'all',
   });
   return { resume: mutate, ...result };
 }
@@ -112,6 +118,8 @@ export function useCancelStream(walletAddress: string) {
       { query: GET_RECENT_STREAMS, variables: { walletAddress, limit: 20 } },
     ],
     awaitRefetchQueries: true,
+    // Surface errors (including timeouts) instead of leaving loading=true forever
+    errorPolicy: 'all',
   });
   return { cancel: mutate, ...result };
 }
@@ -128,6 +136,8 @@ export function useCreateStream(walletAddress: string) {
       { query: GET_RECENT_STREAMS, variables: { walletAddress, limit: 20 } },
     ],
     awaitRefetchQueries: true,
+    // Surface errors (including timeouts) instead of leaving loading=true forever
+    errorPolicy: 'all',
   });
   return { createStream: mutate, ...result };
 }

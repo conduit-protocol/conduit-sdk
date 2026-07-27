@@ -81,8 +81,22 @@ export const Dashboard: React.FC<DashboardProps> = ({
     try {
       // Replace `{ input: {} }` with real form data when the Create Stream
       // form is wired up. The hook already handles cache invalidation.
-      await createStream({ variables: { input: {} } });
-      addNotification("success", "Stream created", "Your new stream has been created successfully.");
+      const input = {};
+
+      // Client-side validation to prevent invalid payloads
+      if (!input || Object.keys(input).length === 0) {
+        throw new Error("Stream creation form is not yet implemented. Please provide valid stream parameters.");
+      }
+
+      // Validate required fields when form is implemented
+      const requiredFields = ['recipient', 'token', 'depositAmount'];
+      for (const field of requiredFields) {
+        if (!(field in input) || !input[field as keyof typeof input]) {
+          throw new Error(`Missing required field: ${field}`);
+        }
+      }
+
+      await createStream({ variables: { input } });
     } catch (err) {
       addNotification(
         "error",
