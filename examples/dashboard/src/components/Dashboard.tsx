@@ -1,5 +1,10 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import styles from "./Dashboard.module.css";
+import {
+  Notifications,
+  Notification,
+  NotificationType,
+} from "./Notifications";
 import {
   useDashboardStats,
   useRecentStreams,
@@ -36,44 +41,70 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const { createStream, loading: createLoading } =
     useCreateStream(walletAddress);
 
-  // Surfaces mutation errors inline without unmounting the table or stats.
-  const [mutationErrorMsg, setMutationErrorMsg] = useState<string | null>(null);
+  // Notification state — surfaces errors and success messages.
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+
+  const addNotification = useCallback(
+    (type: NotificationType, title: string, message: string, duration = 5000) => {
+      const id = `notif-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+      setNotifications((prev) => [...prev, { id, type, title, message, duration }]);
+    },
+    [],
+  );
+
+  const dismissNotification = useCallback((id: string) => {
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
+  }, []);
 
   const stats = statsData?.dashboardStats;
   const streams = streamsData?.streams ?? [];
 
   const handleWithdraw = async (streamId: string) => {
-    setMutationErrorMsg(null);
     try {
       await withdraw({ variables: { streamId } });
+      addNotification("success", "Withdrawal initiated", "Your withdrawal request has been submitted.");
     } catch (err) {
-      setMutationErrorMsg(
-        err instanceof Error
-          ? err.message
-          : "Withdraw failed. Please try again.",
+      addNotification(
+        "error",
+        "Withdrawal failed",
+        err instanceof Error ? err.message : "Withdraw failed. Please try again.",
       );
     }
   };
 
   const handleCreateStream = async () => {
-    setMutationErrorMsg(null);
     try {
       // Replace `{ input: {} }` with real form data when the Create Stream
       // form is wired up. The hook already handles cache invalidation.
       await createStream({ variables: { input: {} } });
+      addNotification("success", "Stream created", "Your new stream has been created successfully.");
     } catch (err) {
-      setMutationErrorMsg(
-        err instanceof Error
-          ? err.message
-          : "Failed to create stream. Please try again.",
+      addNotification(
+        "error",
+        "Create stream failed",
+        err instanceof Error ? err.message : "Failed to create stream. Please try again.",
       );
     }
   };
 
   const handleRefresh = () => {
-    setMutationErrorMsg(null);
     refetch();
   };
+
+  // Surface query-level errors as notifications (no duplicates)
+  const hasQueryErrorNotification = notifications.some(
+    (n) => n.title === "Failed to load data",
+  );
+  React.useEffect(() => {
+    if ((statsError || streamsError) && !hasQueryErrorNotification) {
+      addNotification(
+        "error",
+        "Failed to load data",
+        "There was a problem fetching dashboard data. Click Refresh to try again.",
+        0,
+      );
+    }
+  }, [statsError, streamsError, addNotification, hasQueryErrorNotification]);
 
   return (
     <div className={`${styles.dashboard} ${className || ""}`}>
@@ -132,28 +163,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
         </section>
 
-        {/* Query-level errors */}
-        {(statsError || streamsError) && (
-          <div className={styles.errorBanner}>
-            Failed to load data.{" "}
-            <button onClick={handleRefresh} className={styles.retryButton}>
-              Retry
-            </button>
-          </div>
-        )}
+        {/* Notification stack */}
+        <Notifications
+          notifications={notifications}
+          onDismiss={dismissNotification}
+        />
 
-        {/* Mutation-level errors — dismissible, non-breaking */}
-        {mutationErrorMsg && (
-          <div className={styles.errorBanner} role="alert">
-            {mutationErrorMsg}{" "}
-            <button
-              onClick={() => setMutationErrorMsg(null)}
-              className={styles.retryButton}
-            >
-              Dismiss
-            </button>
-          </div>
-        )}
+        {/* Query-level errors — now surfaced via Notifications */}
 
         <section className={styles.contentSection}>
           <div className={styles.tableContainer}>
