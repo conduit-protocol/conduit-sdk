@@ -18,12 +18,15 @@ interface DashboardProps {
   /** Currently active network. Changes to this prop trigger a full Apollo
    *  cache reset via useNetworkSwitch (fixes #156). */
   network?: string;
+  /** Callback to navigate to the Profile page. */
+  onNavigateProfile?: () => void;
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({
   className,
   walletAddress = "",
   network: _network,
+  onNavigateProfile,
 }) => {
   const {
     data: statsData,
@@ -125,6 +128,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           >
             {createLoading ? "Creating..." : "New Stream"}
           </button>
+          <button className={styles.buttonSecondary} onClick={onNavigateProfile}>Profile</button>
           <button className={styles.buttonSecondary}>Settings</button>
         </div>
       </header>

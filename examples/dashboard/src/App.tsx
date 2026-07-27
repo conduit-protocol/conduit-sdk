@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Dashboard } from './components/Dashboard';
+import { ProfilePage } from './components/ProfilePage';
 import { useNetworkSwitch } from './hooks/useNetworkSwitch';
 
 /**
@@ -7,6 +8,8 @@ import { useNetworkSwitch } from './hooks/useNetworkSwitch';
  * Kept in sync with `SUPPORTED_NETWORKS` in `src/errors.ts`.
  */
 type Network = 'mainnet' | 'testnet' | 'local';
+
+type Page = 'dashboard' | 'profile';
 
 const NETWORKS: Network[] = ['mainnet', 'testnet', 'local'];
 
@@ -18,17 +21,23 @@ const NETWORKS: Network[] = ['mainnet', 'testnet', 'local'];
  * queries are re-fetched whenever the user switches networks, so the Network
  * Switcher never shows stale data from the previous network (fixes #156).
  */
-function AppContent({ network }: { network: Network }) {
+function AppContent({ network, page, onNavigate }: { network: Network; page: Page; onNavigate: (page: Page) => void }) {
   useNetworkSwitch(network);
-  return <Dashboard network={network} />;
+  
+  if (page === 'profile') {
+    return <ProfilePage network={network} onBack={() => onNavigate('dashboard')} />;
+  }
+  
+  return <Dashboard network={network} onNavigateProfile={() => onNavigate('profile')} />;
 }
 
 function App() {
   const [network, setNetwork] = useState<Network>('testnet');
+  const [page, setPage] = useState<Page>('dashboard');
 
   return (
     <div className="app">
-      <AppContent network={network} />
+      <AppContent network={network} page={page} onNavigate={setPage} />
       {/* Network Switcher — exposed at app level so it is always reachable */}
       <div className="network-switcher" aria-label="Network switcher">
         {NETWORKS.map((n) => (
