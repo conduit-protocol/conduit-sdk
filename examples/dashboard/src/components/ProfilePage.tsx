@@ -79,9 +79,11 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
   };
 
   const handleCopyAddress = () => {
-    if (walletAddress) {
+    if (walletAddress && navigator.clipboard) {
       navigator.clipboard.writeText(walletAddress).then(() => {
         addNotification("success", "Address copied", "Wallet address copied to clipboard.");
+      }).catch(() => {
+        addNotification("error", "Copy failed", "Could not copy address to clipboard.");
       });
     }
   };
