@@ -244,14 +244,6 @@
   background-color: #e5e7eb;
 }
 
-/* Loading states */
-.loadingCell {
-  text-align: center;
-  color: #999999;
-  font-style: italic;
-  padding: 2rem;
-}
-
 /* Empty state */
 .emptyState {
   display: flex;
