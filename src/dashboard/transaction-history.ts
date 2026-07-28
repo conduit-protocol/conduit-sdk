@@ -380,13 +380,30 @@ export function transactionHistoryReducer(
         error: toErrorMessage(action.error),
       };
 
-    case 'SET_FILTER':
+    case 'SET_FILTER': {
+      const raw = action.filter ?? {};
+      const validated: Partial<TransactionFilters> = {};
+
+      if (raw.status !== undefined) {
+        validated.status = asEnum(raw.status, VALID_STATUSES, 'ALL') as TransactionStatus | 'ALL';
+      }
+      if (raw.kind !== undefined) {
+        validated.kind = asEnum(raw.kind, VALID_KINDS, 'ALL') as TransactionKind | 'ALL';
+      }
+      if (raw.direction !== undefined) {
+        validated.direction = asEnum(raw.direction, VALID_DIRECTIONS, 'ALL') as TransactionDirection | 'ALL';
+      }
+      if (raw.search !== undefined) {
+        validated.search = asString(raw.search);
+      }
+
       return {
         ...current,
-        filters: { ...current.filters, ...(action.filter ?? {}) },
+        filters: { ...current.filters, ...validated },
         // Any filter change invalidates the current page offset.
         page: 0,
       };
+    }
 
     case 'SET_PAGE': {
       const visible = selectFilteredTransactions(current);

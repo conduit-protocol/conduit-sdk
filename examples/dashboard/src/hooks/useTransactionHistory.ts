@@ -10,6 +10,9 @@ import {
   type TransactionFilters,
   type TransactionHistoryState,
   type TransactionRecord,
+  type TransactionStatus,
+  type TransactionKind,
+  type TransactionDirection,
 } from '../../../../src/dashboard/transaction-history';
 
 export interface UseTransactionHistoryResult {
@@ -96,7 +99,26 @@ export function useTransactionHistory(
   }, [error]);
 
   const setFilter = useCallback((filter: Partial<TransactionFilters>) => {
-    dispatch({ type: 'SET_FILTER', filter });
+    const VALID_STATUSES: TransactionStatus[] = ['PENDING', 'CONFIRMED', 'FAILED', 'CANCELLED', 'UNKNOWN'];
+    const VALID_KINDS: TransactionKind[] = ['CREATE', 'WITHDRAW', 'PAUSE', 'RESUME', 'CANCEL', 'TOP_UP', 'UNKNOWN'];
+    const VALID_DIRECTIONS: TransactionDirection[] = ['IN', 'OUT', 'UNKNOWN'];
+
+    const sanitized: Partial<TransactionFilters> = {};
+
+    if (filter.status !== undefined) {
+      sanitized.status = VALID_STATUSES.includes(filter.status) ? filter.status : 'ALL';
+    }
+    if (filter.kind !== undefined) {
+      sanitized.kind = VALID_KINDS.includes(filter.kind) ? filter.kind : 'ALL';
+    }
+    if (filter.direction !== undefined) {
+      sanitized.direction = VALID_DIRECTIONS.includes(filter.direction) ? filter.direction : 'ALL';
+    }
+    if (filter.search !== undefined && typeof filter.search === 'string') {
+      sanitized.search = filter.search;
+    }
+
+    dispatch({ type: 'SET_FILTER', filter: sanitized });
   }, []);
 
   const setPage = useCallback((page: number) => {
