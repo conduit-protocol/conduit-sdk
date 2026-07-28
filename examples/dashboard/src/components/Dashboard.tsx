@@ -223,14 +223,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     </tr>
                   ) : (
                     streams.map((stream) => (
-                      <tr key={stream.id}>
-                        <td>#{stream.streamId}</td>
+                      <tr key={stream.id ?? stream.streamId ?? Math.random()}>
+                        <td>#{stream.streamId ?? "—"}</td>
                         <td>
-                          {stream.recipient.length > 12
-                            ? `${stream.recipient.slice(0, 6)}...${stream.recipient.slice(-4)}`
-                            : stream.recipient}
+                          {(stream.recipient ?? "").length > 12
+                            ? `${(stream.recipient ?? "").slice(0, 6)}...${(stream.recipient ?? "").slice(-4)}`
+                            : (stream.recipient ?? "—")}
                         </td>
-                        <td>{stream.ratePerSecond} stroops/s</td>
+                        <td>{stream.ratePerSecond ?? "0"} stroops/s</td>
                         <td>
                           <span
                             className={
@@ -239,13 +239,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                 : styles.badgePaused
                             }
                           >
-                            {stream.status}
+                            {stream.status ?? "UNKNOWN"}
                           </span>
                         </td>
                         <td>
                           <button
                             className={styles.buttonSmall}
-                            onClick={() => handleWithdraw(stream.id)}
+                            onClick={() => stream.id && handleWithdraw(stream.id)}
                             disabled={withdrawLoading}
                           >
                             Withdraw
