@@ -1,3 +1,4 @@
+import { StrKey } from '@stellar/stellar-sdk';
 import { bigintSafeStringify } from './utils.js';
 
 export interface SubmitOptions {
@@ -273,6 +274,22 @@ export class StreamBuilder {
     if (typeof address !== 'string' || address.trim().length === 0) {
       throw new Error(`Invalid StreamBuilder parameter: ${field} must be a non-empty string`);
     }
+
+    if (field === 'token') {
+      if (!StrKey.isValidContract(address)) {
+        throw new Error(
+          `Invalid StreamBuilder parameter: ${field} must be a valid Soroban contract ID (C-address), got "${address}"`,
+        );
+      }
+    } else {
+      // sender / recipient — must be valid Ed25519 public keys (G-addresses)
+      if (!StrKey.isValidEd25519PublicKey(address)) {
+        throw new Error(
+          `Invalid StreamBuilder parameter: ${field} must be a valid Stellar public key (G-address), got "${address}"`,
+        );
+      }
+    }
+
     return address;
   }
 }
@@ -298,6 +315,7 @@ const DEFAULT_MAX_BATCH_SIZE = 50;
 
 /**
  * Validate that the input is a non-null, non-empty array of objects.
+ * Also validates individual fields (token, sender, recipient) for address format correctness.
  * Returns an array of error messages, or an empty array if valid.
  * Mandatory client-side validation prevents invalid payloads from reaching the smart contract.
  */
@@ -320,6 +338,41 @@ function validatePayload(streams: unknown): string[] {
       errors.push(`Batch item at index ${i} cannot be null or undefined`);
     } else if (typeof item !== 'object') {
       errors.push(`Batch item at index ${i} must be an object, got ${typeof item}`);
+    } else {
+      // Field-level validation for known address-type fields
+      const obj = item as Record<string, unknown>;
+
+      // Validate token field — must be a valid Soroban contract ID (C-address)
+      if (obj.token !== undefined && obj.token !== null) {
+        const token = String(obj.token);
+        if (!StrKey.isValidContract(token)) {
+          errors.push(`Batch item at index ${i}: token must be a valid Soroban contract ID (C-address), got "${token}"`);
+        }
+      }
+
+      // Validate sender field — must be a valid Ed25519 public key (G-address)
+      if (obj.sender !== undefined && obj.sender !== null) {
+        const sender = String(obj.sender);
+        if (!StrKey.isValidEd25519PublicKey(sender)) {
+          errors.push(`Batch item at index ${i}: sender must be a valid Stellar public key (G-address), got "${sender}"`);
+        }
+      }
+
+      // Validate recipient field — must be a valid Ed25519 public key (G-address)
+      if (obj.recipient !== undefined && obj.recipient !== null) {
+        const recipient = String(obj.recipient);
+        if (!StrKey.isValidEd25519PublicKey(recipient)) {
+          errors.push(`Batch item at index ${i}: recipient must be a valid Stellar public key (G-address), got "${recipient}"`);
+        }
+      }
+
+      // Validate amount field — must be a positive finite number (where present)
+      if (obj.amount !== undefined && obj.amount !== null) {
+        const amount = Number(obj.amount);
+        if (!Number.isFinite(amount) || amount <= 0) {
+          errors.push(`Batch item at index ${i}: amount must be a positive finite number, got "${obj.amount}"`);
+        }
+      }
     }
   }
 
@@ -357,7 +410,7 @@ export class ConduitBatcher {
       throw new Error('ConduitBatcher has been destroyed');
     }
 
-    const validationErrors = validatePayload(streams);
+const validationErrors = validatePayload(streams);
     if (validationErrors.length > 0) {
       return {
         success: false,
@@ -367,6 +420,7 @@ export class ConduitBatcher {
       };
     }
 
+    const maxBatchSize = options?.maxBatchSize ?? DEFAULT_MAX_BATCH_SIZE;
     const sanitized = streams.map(bigintSafeStringify);
     const resolvedMaxBatchSize = options?.maxBatchSize ?? DEFAULT_MAX_BATCH_SIZE;
     const chunks = sanitized.length === 0 ? 0 : Math.ceil(sanitized.length / resolvedMaxBatchSize);
