@@ -22,6 +22,8 @@ interface DashboardProps {
   network?: string;
   /** Callback to navigate to the Profile page. */
   onNavigateProfile?: () => void;
+  /** Callback to navigate to the Settings page. */
+  onNavigateSettings?: () => void;
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({
@@ -29,6 +31,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   walletAddress = "",
   network: _network,
   onNavigateProfile,
+  onNavigateSettings,
 }) => {
   const {
     data: statsData,
@@ -145,7 +148,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             {createLoading ? "Creating..." : "New Stream"}
           </button>
           <button className={styles.buttonSecondary} onClick={onNavigateProfile}>Profile</button>
-          <button className={styles.buttonSecondary}>Settings</button>
+          <button className={styles.buttonSecondary} onClick={onNavigateSettings}>Settings</button>
         </div>
       </header>
 

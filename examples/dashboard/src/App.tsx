@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Dashboard } from './components/Dashboard';
 import { ProfilePage } from './components/ProfilePage';
+import { SettingsPage } from './components/SettingsPage';
 import { useNetworkSwitch } from './hooks/useNetworkSwitch';
 
 /**
@@ -9,7 +10,7 @@ import { useNetworkSwitch } from './hooks/useNetworkSwitch';
  */
 type Network = 'mainnet' | 'testnet' | 'local';
 
-type Page = 'dashboard' | 'profile';
+type Page = 'dashboard' | 'profile' | 'settings';
 
 const NETWORKS: Network[] = ['mainnet', 'testnet', 'local'];
 
@@ -23,12 +24,16 @@ const NETWORKS: Network[] = ['mainnet', 'testnet', 'local'];
  */
 function AppContent({ network, page, onNavigate }: { network: Network; page: Page; onNavigate: (page: Page) => void }) {
   useNetworkSwitch(network);
-  
+
   if (page === 'profile') {
     return <ProfilePage network={network} onBack={() => onNavigate('dashboard')} />;
   }
-  
-  return <Dashboard network={network} onNavigateProfile={() => onNavigate('profile')} />;
+
+  if (page === 'settings') {
+    return <SettingsPage network={network} onBack={() => onNavigate('dashboard')} />;
+  }
+
+  return <Dashboard network={network} onNavigateProfile={() => onNavigate('profile')} onNavigateSettings={() => onNavigate('settings')} />;
 }
 
 function App() {
