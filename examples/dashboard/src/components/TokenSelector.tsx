@@ -1,4 +1,4 @@
-import React, { useEffect, useId, useRef, useState } from "react";
+import React, { useCallback, useEffect, useId, useRef, useState } from "react";
 import styles from "./TokenSelector.module.css";
 
 // ---------------------------------------------------------------------------
@@ -77,10 +77,10 @@ export const TokenSelector: React.FC<TokenSelectorProps> = ({
     requestAnimationFrame(() => searchRef.current?.focus());
   };
 
-  const closeDropdown = () => {
+  const closeDropdown = useCallback(() => {
     setOpen(false);
     setQuery("");
-  };
+  }, []);
 
   const handleSelect = (token: Token) => {
     onChange(token);
@@ -124,7 +124,7 @@ export const TokenSelector: React.FC<TokenSelectorProps> = ({
 
     document.addEventListener("pointerdown", handlePointerDown);
     return () => document.removeEventListener("pointerdown", handlePointerDown);
-  }, [open]);
+  }, [open, closeDropdown]);
 
   // -------------------------------------------------------------------------
   // Render
