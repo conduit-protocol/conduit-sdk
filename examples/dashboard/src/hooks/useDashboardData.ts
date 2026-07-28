@@ -2,6 +2,7 @@ import { useQuery, useMutation } from "@apollo/client";
 import {
   GET_DASHBOARD_STATS,
   GET_RECENT_STREAMS,
+  GET_TOKENS,
   CREATE_STREAM,
   WITHDRAW_STREAM,
   PAUSE_STREAM,
@@ -30,6 +31,15 @@ interface DashboardStatsData {
 
 interface RecentStreamsData {
   streams: Stream[];
+}
+
+interface TokenData {
+  tokens: {
+    id: string;
+    symbol: string;
+    name: string;
+    logoUrl?: string;
+  }[];
 }
 
 /**
@@ -68,6 +78,23 @@ export function useRecentStreams(walletAddress: string, limit = 20) {
 }
 
 /**
+ * Fetches the list of supported tokens for the Token Selector.
+ *
+ * Polls periodically to catch newly listed tokens, and is included in
+ * `refetchQueries` for every mutation so the token list always reflects
+ * the latest on-chain state — fixes the stale-token-list bug.
+ *
+ * `errorPolicy: 'all'` surfaces network errors instead of leaving
+ * loading stuck at true (#158).
+ */
+export function useTokens() {
+  return useQuery<TokenData>(GET_TOKENS, {
+    pollInterval: 30_000,
+    errorPolicy: 'all',
+  });
+}
+
+/**
  * All mutation hooks use `refetchQueries` to invalidate and re-fetch
  * both the stats and streams queries, ensuring the Dashboard always
  * reflects the latest on-chain state after any action.
@@ -77,6 +104,7 @@ export function useWithdrawStream(walletAddress: string) {
     refetchQueries: [
       { query: GET_DASHBOARD_STATS, variables: { walletAddress } },
       { query: GET_RECENT_STREAMS, variables: { walletAddress, limit: 20 } },
+      GET_TOKENS,
     ],
     awaitRefetchQueries: true,
     // Surface errors (including timeouts) instead of leaving loading=true forever
@@ -90,6 +118,7 @@ export function usePauseStream(walletAddress: string) {
     refetchQueries: [
       { query: GET_DASHBOARD_STATS, variables: { walletAddress } },
       { query: GET_RECENT_STREAMS, variables: { walletAddress, limit: 20 } },
+      GET_TOKENS,
     ],
     awaitRefetchQueries: true,
     // Surface errors (including timeouts) instead of leaving loading=true forever
@@ -103,6 +132,7 @@ export function useResumeStream(walletAddress: string) {
     refetchQueries: [
       { query: GET_DASHBOARD_STATS, variables: { walletAddress } },
       { query: GET_RECENT_STREAMS, variables: { walletAddress, limit: 20 } },
+      GET_TOKENS,
     ],
     awaitRefetchQueries: true,
     // Surface errors (including timeouts) instead of leaving loading=true forever
@@ -116,6 +146,7 @@ export function useCancelStream(walletAddress: string) {
     refetchQueries: [
       { query: GET_DASHBOARD_STATS, variables: { walletAddress } },
       { query: GET_RECENT_STREAMS, variables: { walletAddress, limit: 20 } },
+      GET_TOKENS,
     ],
     awaitRefetchQueries: true,
     // Surface errors (including timeouts) instead of leaving loading=true forever
@@ -134,6 +165,7 @@ export function useCreateStream(walletAddress: string) {
     refetchQueries: [
       { query: GET_DASHBOARD_STATS, variables: { walletAddress } },
       { query: GET_RECENT_STREAMS, variables: { walletAddress, limit: 20 } },
+      GET_TOKENS,
     ],
     awaitRefetchQueries: true,
     // Surface errors (including timeouts) instead of leaving loading=true forever

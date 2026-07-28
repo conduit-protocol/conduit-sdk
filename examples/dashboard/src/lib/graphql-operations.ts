@@ -91,3 +91,14 @@ export const CANCEL_STREAM = gql`
     }
   }
 `;
+
+export const GET_TOKENS = gql`
+  query GetTokens {
+    tokens {
+      id
+      symbol
+      name
+      logoUrl
+    }
+  }
+`;
