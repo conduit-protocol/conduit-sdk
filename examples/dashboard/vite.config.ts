@@ -23,8 +23,11 @@ export default defineConfig({
     devSourcemap: true,
   },
   build: {
-    // Split per-component CSS chunks so each page only loads what it needs.
-    cssCodeSplit: true,
+    // Disable CSS code splitting — when CSS is split into per-component chunks,
+    // mobile browsers can fail to load individual chunks in the correct order,
+    // causing CSS Modules scoped class names to mismatch and flexbox layouts
+    // to break in production builds (fixes #155).
+    cssCodeSplit: false,
     sourcemap: true,
   },
   resolve: {
