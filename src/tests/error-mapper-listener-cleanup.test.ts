@@ -116,4 +116,23 @@ describe('ErrorMapper — listener cleanup (#81)', () => {
     expect(err.contract).toBe('stream');
     expect(err.code).toBe(6);
   });
+
+  it('allows callers to register custom error message types', async () => {
+    const onError = vi.fn();
+    const mapper = new ErrorMapper(relayer, onError, {
+      errorMessageTypes: {
+        proxy_error: 'factory',
+      },
+    });
+    mapper.attach();
+    await relayer.connect();
+
+    emit('proxy_error', { code: 5 });
+
+    expect(onError).toHaveBeenCalledTimes(1);
+    const err = onError.mock.calls[0]![0];
+    expect(err).toBeInstanceOf(ConduitError);
+    expect(err.contract).toBe('factory');
+    expect(err.code).toBe(5);
+  });
 });

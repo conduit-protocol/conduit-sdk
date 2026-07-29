@@ -2,6 +2,11 @@ import type { WebSocketRelayer, WebSocketMessage, MessageHandler } from './WebSo
 import { ConduitError, type ConduitContract } from '../errors.js';
 
 export type MappedErrorHandler = (error: Error) => void;
+export type ErrorMessageTypeMap = Record<string, ConduitContract>;
+
+export interface ErrorMapperOptions {
+  errorMessageTypes?: ErrorMessageTypeMap;
+}
 
 /** WebSocket message types that carry a raw on-chain error payload, and which contract each belongs to. */
 const ERROR_MESSAGE_TYPES: Record<string, ConduitContract> = {
@@ -21,12 +26,17 @@ const ERROR_MESSAGE_TYPES: Record<string, ConduitContract> = {
 export class ErrorMapper {
   private readonly relayer: WebSocketRelayer;
   private readonly onError: MappedErrorHandler;
+  private readonly errorMessageTypes: ErrorMessageTypeMap;
   private unsubscribers: Array<() => void> = [];
   private isDisposed = false;
 
-  constructor(relayer: WebSocketRelayer, onError: MappedErrorHandler) {
+  constructor(relayer: WebSocketRelayer, onError: MappedErrorHandler, options: ErrorMapperOptions = {}) {
     this.relayer = relayer;
     this.onError = onError;
+    this.errorMessageTypes = {
+      ...ERROR_MESSAGE_TYPES,
+      ...(options.errorMessageTypes ?? {}),
+    };
   }
 
   /** Registers one relayer listener per error message type. Safe to call more than once. */
@@ -36,7 +46,7 @@ export class ErrorMapper {
     this.detach();
     this.isDisposed = false;
 
-    for (const type of Object.keys(ERROR_MESSAGE_TYPES)) {
+    for (const type of Object.keys(this.errorMessageTypes)) {
       const handler: MessageHandler = (msg) => this.handleMessage(type, msg);
       this.unsubscribers.push(this.relayer.on(type, handler));
     }
@@ -49,7 +59,7 @@ export class ErrorMapper {
       return;
     }
 
-    const contract = ERROR_MESSAGE_TYPES[type];
+    const contract = this.errorMessageTypes[type];
     if (!contract) return;
 
     const mapped = ConduitError.fromContractError(contract, msg.payload);
