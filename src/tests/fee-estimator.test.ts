@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { FeeEstimator } from '../fee-estimator.js';
 
 describe('FeeEstimator - Race condition and edge cases', () => {
@@ -31,31 +31,46 @@ describe('FeeEstimator - Race condition and edge cases', () => {
     });
     
     expect(estimator.getBaseFee()).toBe(150.1234568);
+    expect(estimator.lastSuccessfulFetchAt).toEqual(expect.any(Number));
+    expect(estimator.lastError).toBeNull();
+    expect(estimator.isStale).toBe(false);
   });
 
-  it('should execute the fallback sequence when network fails', async () => {
+  it('should surface the specific error when falling back after network failure', async () => {
     const estimator = new FeeEstimator(100);
+    const onError = vi.fn();
     
     const failingFetcher = async () => {
       throw new Error('Network error');
     };
 
-    const fee = await estimator.estimateFee(failingFetcher);
+    const fee = await estimator.estimateFee(failingFetcher, { onError });
     
     // Fallback should return the original base fee
     expect(fee).toBe(100);
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError.mock.calls[0][0]).toBeInstanceOf(Error);
+    expect(onError.mock.calls[0][0].message).toBe('Network error');
+    expect(estimator.lastError?.message).toBe('Network error');
+    expect(estimator.lastSuccessfulFetchAt).toBeNull();
+    expect(estimator.isStale).toBe(true);
   });
   
-  it('should handle floating-point precision properly with invalid math', async () => {
+  it('should expose stale state when invalid math falls back', async () => {
     const estimator = new FeeEstimator(100);
+    const onError = vi.fn();
     
     const badMathFetcher = async () => {
       return NaN; 
     };
 
-    const fee = await estimator.estimateFee(badMathFetcher);
+    const fee = await estimator.estimateFee(badMathFetcher, { onError });
     // Boundary checks should catch this and fallback
     expect(fee).toBe(100);
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError.mock.calls[0][0].message).toBe('Invalid network fee response');
+    expect(estimator.lastError?.message).toBe('Invalid network fee response');
+    expect(estimator.isStale).toBe(true);
   });
 
   it('should handle multiple sequential requests successfully', async () => {
@@ -69,5 +84,22 @@ describe('FeeEstimator - Race condition and edge cases', () => {
     
     const fee2 = await estimator.estimateFee(fetcher2);
     expect(fee2).toBe(130.5);
+    expect(estimator.isStale).toBe(false);
+  });
+
+  it('should clear stale status after a later successful fetch', async () => {
+    const estimator = new FeeEstimator(100);
+
+    await estimator.estimateFee(async () => {
+      throw new Error('temporary outage');
+    });
+    expect(estimator.isStale).toBe(true);
+    expect(estimator.lastError?.message).toBe('temporary outage');
+
+    const recoveredFee = await estimator.estimateFee(async () => 140.25);
+    expect(recoveredFee).toBe(140.25);
+    expect(estimator.lastError).toBeNull();
+    expect(estimator.lastSuccessfulFetchAt).toEqual(expect.any(Number));
+    expect(estimator.isStale).toBe(false);
   });
 });

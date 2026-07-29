@@ -7,12 +7,17 @@ export interface FeeEstimatorOptions {
   minRefetchIntervalMs?: number;
 }
 
+export interface FeeEstimateOptions {
+  onError?: (error: Error) => void;
+}
+
 export class FeeEstimator {
   private baseFee: number;
   private isEstimating: boolean = false;
   private currentPromise: Promise<number> | null = null;
-  private lastFetchTimestamp: number = 0;
   private readonly minRefetchIntervalMs: number;
+  private lastSuccessfulFetchAtValue: number | null = null;
+  private lastErrorValue: Error | null = null;
 
   constructor(initialFee: number = 100, options?: FeeEstimatorOptions) {
     this.baseFee = initialFee;
@@ -27,14 +32,17 @@ export class FeeEstimator {
    * If `minRefetchIntervalMs` was configured, returns the cached `baseFee` when
    * called within that window after the last successful fetch.
    */
-  async estimateFee(networkFetcher: () => Promise<number>): Promise<number> {
+  async estimateFee(
+    networkFetcher: () => Promise<number>,
+    options: FeeEstimateOptions = {}
+  ): Promise<number> {
     if (this.currentPromise) {
       return this.currentPromise;
     }
 
     // Return cached fee if within the minimum re-fetch interval
     if (this.minRefetchIntervalMs > 0) {
-      const elapsed = Date.now() - this.lastFetchTimestamp;
+      const elapsed = Date.now() - (this.lastSuccessfulFetchAtValue ?? 0);
       if (elapsed < this.minRefetchIntervalMs) {
         return this.baseFee;
       }
@@ -52,9 +60,14 @@ export class FeeEstimator {
         
         // Round to 7 decimal places for precision handling
         this.baseFee = Math.round(rawFee * 10000000) / 10000000;
-        this.lastFetchTimestamp = Date.now();
+        this.lastSuccessfulFetchAtValue = Date.now();
+        this.lastErrorValue = null;
         return this.baseFee;
       } catch (error) {
+        const normalizedError = error instanceof Error ? error : new Error(String(error));
+        this.lastErrorValue = normalizedError;
+        options.onError?.(normalizedError);
+
         // Fallback sequence: return the last known base fee
         return this.baseFee;
       } finally {
@@ -73,5 +86,17 @@ export class FeeEstimator {
 
   getBaseFee(): number {
     return this.baseFee;
+  }
+
+  get lastSuccessfulFetchAt(): number | null {
+    return this.lastSuccessfulFetchAtValue;
+  }
+
+  get lastError(): Error | null {
+    return this.lastErrorValue;
+  }
+
+  get isStale(): boolean {
+    return this.lastErrorValue !== null;
   }
 }
