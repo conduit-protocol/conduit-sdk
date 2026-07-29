@@ -1,5 +1,33 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ConduitBatcher, StreamBuilder, type BatchOperation } from '../builder.js';
+import { TransactionBuilder, Networks } from '@stellar/stellar-sdk';
+
+/** Real chain context so the batcher can build genuine transaction XDR. */
+
+/**
+ * Assert the batch produced genuine, decodable transaction XDR — one
+ * transaction per operation, since Soroban allows a single host-function
+ * invocation per transaction.
+ */
+function expectRealXdr(result: { xdr: string; xdrs?: string[]; operations: number }) {
+  expect(result.xdr).not.toBe('');
+  expect(result.xdr).not.toContain('mock');
+  expect(result.xdrs).toHaveLength(result.operations);
+
+  for (const envelope of result.xdrs ?? []) {
+    // Round-trips through the real XDR codec, which a placeholder cannot do.
+    const tx = TransactionBuilder.fromXDR(envelope, Networks.TESTNET);
+    expect(tx.toXDR()).toBe(envelope);
+  }
+}
+
+const TEST_CONTEXT = {
+  contractId: 'CAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQC526',
+  sourceAccount: 'GAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQDZ7H',
+  network: 'testnet' as const,
+  sequence: '1',
+};
+
 
 describe('ConduitBatcher', () => {
   beforeEach(() => {
@@ -33,21 +61,21 @@ describe('ConduitBatcher', () => {
     });
 
     it('returns error result for array containing null items', () => {
-      const result = ConduitBatcher.execute([null as unknown as Record<string, unknown>]);
+      const result = ConduitBatcher.execute([null as unknown as Record<string, unknown>], { context: TEST_CONTEXT });
 
       expect(result.success).toBe(false);
       expect(result.errors![0]).toContain('cannot be null or undefined');
     });
 
     it('returns error result for array containing undefined items', () => {
-      const result = ConduitBatcher.execute([undefined as unknown as Record<string, unknown>]);
+      const result = ConduitBatcher.execute([undefined as unknown as Record<string, unknown>], { context: TEST_CONTEXT });
 
       expect(result.success).toBe(false);
       expect(result.errors![0]).toContain('cannot be null or undefined');
     });
 
     it('returns error result for array containing non-object items', () => {
-      const result = ConduitBatcher.execute(['string' as unknown as Record<string, unknown>]);
+      const result = ConduitBatcher.execute(['string' as unknown as Record<string, unknown>], { context: TEST_CONTEXT });
 
       expect(result.success).toBe(false);
       expect(result.errors![0]).toContain('must be an object');
@@ -59,19 +87,20 @@ describe('ConduitBatcher', () => {
         valid,
         null as unknown as Record<string, unknown>,
         'bad' as unknown as Record<string, unknown>,
-      ]);
+      ], { context: TEST_CONTEXT });
 
       expect(result.success).toBe(false);
       expect(result.errors!.some(e => e.includes('index 1'))).toBe(true);
     });
 
     it('accepts an empty array as a valid no-op batch', () => {
-      const result = ConduitBatcher.execute([]);
+      const result = ConduitBatcher.execute([], { context: TEST_CONTEXT });
 
       expect(result.success).toBe(true);
       expect(result.operations).toBe(0);
       expect(result.chunks).toBe(0);
-      expect(result.xdr).toBe('AAAA...mock...batch...XDR');
+      expect(result.xdr).toBe('');
+      expect(result.xdrs).toEqual([]);
       expect(result.errors).toBeUndefined();
     });
   });
@@ -92,26 +121,26 @@ describe('ConduitBatcher', () => {
         .amount(200)
         .build();
 
-      const result = ConduitBatcher.execute([stream1, stream2]);
+      const result = ConduitBatcher.execute([stream1, stream2], { context: TEST_CONTEXT });
 
       expect(result.success).toBe(true);
       expect(result.operations).toBe(2);
       expect(result.chunks).toBe(1);
-      expect(result.xdr).toBe('AAAA...mock...batch...XDR');
+      expectRealXdr(result);
     });
 
     it('returns the correct operation count for arbitrary record payloads', () => {
       const result = ConduitBatcher.execute([
         { method: 'create', params: { token: 'CD1' } },
         { method: 'withdraw', params: { streamId: 1n } },
-      ]);
+      ], { context: TEST_CONTEXT });
 
       expect(result.success).toBe(true);
       expect(result.operations).toBe(2);
     });
 
     it('handles a single-item batch', () => {
-      const result = ConduitBatcher.execute([{ token: 'CAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQC526', amount: 100 }]);
+      const result = ConduitBatcher.execute([{ token: 'CAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQC526', amount: 100 }], { context: TEST_CONTEXT });
 
       expect(result.success).toBe(true);
       expect(result.operations).toBe(1);
@@ -129,7 +158,7 @@ describe('ConduitBatcher', () => {
           rate: BigInt('9007199254740993'),
           deposit: 50000n,
         },
-      ]);
+      ], { context: TEST_CONTEXT });
 
       expect(result.success).toBe(true);
       expect(result.operations).toBe(1);
@@ -141,7 +170,7 @@ describe('ConduitBatcher', () => {
           id: 1,
           metadata: { nested: { value: 9007199254740993n } },
         },
-      ]);
+      ], { context: TEST_CONTEXT });
 
       expect(result.success).toBe(true);
       expect(result.operations).toBe(1);
@@ -152,7 +181,7 @@ describe('ConduitBatcher', () => {
         { id: 1n, rate: 2n, name: 'stream-a' },
         { id: 3, rate: 4, name: 'stream-b' },
         { nested: { deep: { val: 99n } } },
-      ]);
+      ], { context: TEST_CONTEXT });
 
       expect(result.success).toBe(true);
       expect(result.operations).toBe(3);
@@ -161,7 +190,7 @@ describe('ConduitBatcher', () => {
     it('accepts payloads with null nested values alongside bigints', () => {
       const result = ConduitBatcher.execute([
         { a: 1n, b: 'hello', c: true, d: null, e: { f: 2n } },
-      ] as Record<string, unknown>[]);
+      ] as Record<string, unknown>[], { context: TEST_CONTEXT });
 
       expect(result.success).toBe(true);
       expect(result.operations).toBe(1);
@@ -171,7 +200,7 @@ describe('ConduitBatcher', () => {
       const sym = Symbol('test');
       const result = ConduitBatcher.execute([
         { key: sym as unknown as string, token: 'CAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQC526' },
-      ]);
+      ], { context: TEST_CONTEXT });
 
       expect(result.success).toBe(true);
       expect(result.operations).toBe(1);
@@ -181,7 +210,7 @@ describe('ConduitBatcher', () => {
   describe('execute — chunking', () => {
     it('uses a single chunk when batch size is within the default limit', () => {
       const streams = Array.from({ length: 2 }, (_, i) => ({ id: i, name: `stream-${i}` }));
-      const result = ConduitBatcher.execute(streams);
+      const result = ConduitBatcher.execute(streams, { context: TEST_CONTEXT });
 
       expect(result.chunks).toBe(1);
       expect(result.operations).toBe(2);
@@ -193,7 +222,7 @@ describe('ConduitBatcher', () => {
         name: `stream-${i}`,
       }));
 
-      const result = ConduitBatcher.execute(streams);
+      const result = ConduitBatcher.execute(streams, { context: TEST_CONTEXT });
 
       expect(result.success).toBe(true);
       expect(result.operations).toBe(55);
@@ -206,7 +235,7 @@ describe('ConduitBatcher', () => {
         name: `stream-${i}`,
       }));
 
-      const result = ConduitBatcher.execute(streams, { maxBatchSize: 50 });
+      const result = ConduitBatcher.execute(streams, { context: TEST_CONTEXT, maxBatchSize: 50 });
 
       expect(result.success).toBe(true);
       expect(result.operations).toBe(120);
@@ -215,7 +244,7 @@ describe('ConduitBatcher', () => {
 
     it('creates one chunk per item when maxBatchSize is 1', () => {
       const streams = [{ id: 1 }, { id: 2 }, { id: 3 }];
-      const result = ConduitBatcher.execute(streams, { maxBatchSize: 1 });
+      const result = ConduitBatcher.execute(streams, { context: TEST_CONTEXT, maxBatchSize: 1 });
 
       expect(result.chunks).toBe(3);
       expect(result.operations).toBe(3);
@@ -223,7 +252,7 @@ describe('ConduitBatcher', () => {
 
     it('creates a single chunk when maxBatchSize exceeds the payload length', () => {
       const streams = [{ id: 1 }, { id: 2 }];
-      const result = ConduitBatcher.execute(streams, { maxBatchSize: 100 });
+      const result = ConduitBatcher.execute(streams, { context: TEST_CONTEXT, maxBatchSize: 100 });
 
       expect(result.chunks).toBe(1);
       expect(result.operations).toBe(2);
@@ -231,7 +260,7 @@ describe('ConduitBatcher', () => {
 
     it('creates exactly one chunk when length equals maxBatchSize', () => {
       const streams = Array.from({ length: 50 }, (_, i) => ({ id: i }));
-      const result = ConduitBatcher.execute(streams, { maxBatchSize: 50 });
+      const result = ConduitBatcher.execute(streams, { context: TEST_CONTEXT, maxBatchSize: 50 });
 
       expect(result.chunks).toBe(1);
       expect(result.operations).toBe(50);
@@ -242,7 +271,7 @@ describe('ConduitBatcher', () => {
     it('throws when execute is called after destroy', () => {
       ConduitBatcher.destroy();
 
-      expect(() => ConduitBatcher.execute([{ token: 'CD1' }])).toThrow(
+      expect(() => ConduitBatcher.execute([{ token: 'CD1' }], { context: TEST_CONTEXT })).toThrow(
         'ConduitBatcher has been destroyed',
       );
     });
@@ -252,15 +281,15 @@ describe('ConduitBatcher', () => {
     it('resolves successfully with valid operations', async () => {
       const result = await ConduitBatcher.executeAsync([
         { method: 'create', params: { token: 'CD1', amount: 100n } },
-      ]);
+      ], { context: TEST_CONTEXT });
 
       expect(result.success).toBe(true);
       expect(result.operations).toBe(1);
-      expect(result.xdr).toBe('AAAA...mock...batch...XDR');
+      expectRealXdr(result);
     });
 
     it('returns error result for null operations', async () => {
-      const result = await ConduitBatcher.executeAsync(null as unknown as BatchOperation[]);
+      const result = await ConduitBatcher.executeAsync(null as unknown as BatchOperation[], { context: TEST_CONTEXT });
 
       expect(result.success).toBe(false);
       expect(result.errors).toBeDefined();
@@ -269,7 +298,7 @@ describe('ConduitBatcher', () => {
     it('returns error result for invalid operation items', async () => {
       const result = await ConduitBatcher.executeAsync([
         null as unknown as BatchOperation,
-      ]);
+      ], { context: TEST_CONTEXT });
 
       expect(result.success).toBe(false);
       expect(result.errors![0]).toContain('cannot be null or undefined');
@@ -292,15 +321,15 @@ describe('ConduitBatcher', () => {
       ConduitBatcher.destroy();
 
       await expect(
-        ConduitBatcher.executeAsync([{ method: 'create', params: { token: 'CD1' } }]),
+        ConduitBatcher.executeAsync([{ method: 'create', params: { token: 'CD1' } }], { context: TEST_CONTEXT }),
       ).rejects.toThrow('ConduitBatcher has been destroyed');
     });
 
     it('processes multiple queued executeAsync calls', async () => {
       const results = await Promise.all([
-        ConduitBatcher.executeAsync([{ method: 'op1', params: { id: 1 } }]),
-        ConduitBatcher.executeAsync([{ method: 'op2', params: { id: 2 } }]),
-        ConduitBatcher.executeAsync([{ method: 'op3', params: { id: 3 } }]),
+        ConduitBatcher.executeAsync([{ method: 'op1', params: { id: 1 } }], { context: TEST_CONTEXT }),
+        ConduitBatcher.executeAsync([{ method: 'op2', params: { id: 2 } }], { context: TEST_CONTEXT }),
+        ConduitBatcher.executeAsync([{ method: 'op3', params: { id: 3 } }], { context: TEST_CONTEXT }),
       ]);
 
       expect(results).toHaveLength(3);
@@ -312,7 +341,7 @@ describe('ConduitBatcher', () => {
 
     it('handles rapid concurrent executeAsync calls without error', async () => {
       const promises = Array.from({ length: 50 }, (_, i) =>
-        ConduitBatcher.executeAsync([{ method: 'rapid', params: { index: i } }]),
+        ConduitBatcher.executeAsync([{ method: 'rapid', params: { index: i } }], { context: TEST_CONTEXT }),
       );
 
       const results = await Promise.all(promises);
@@ -327,7 +356,7 @@ describe('ConduitBatcher', () => {
     it('sanitizes bigint values inside operation params', async () => {
       const result = await ConduitBatcher.executeAsync([
         { method: 'topUp', params: { streamId: 1n, amount: 9007199254740993n } },
-      ]);
+      ], { context: TEST_CONTEXT });
 
       expect(result.success).toBe(true);
       expect(result.operations).toBe(1);
@@ -342,7 +371,7 @@ describe('ConduitBatcher', () => {
 
       const pending = ConduitBatcher.executeAsync([
         { method: 'create', params: { token: 'CD1' } },
-      ]);
+      ], { context: TEST_CONTEXT });
 
       ConduitBatcher.cleanup();
       processQueueSpy.mockRestore();
@@ -356,7 +385,7 @@ describe('ConduitBatcher', () => {
       ConduitBatcher.destroy();
       ConduitBatcher.reset();
 
-      const result = ConduitBatcher.execute([{ token: 'CAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQC526' }]);
+      const result = ConduitBatcher.execute([{ token: 'CAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQC526' }], { context: TEST_CONTEXT });
       expect(result.success).toBe(true);
       expect(result.operations).toBe(1);
     });
@@ -367,7 +396,7 @@ describe('ConduitBatcher', () => {
 
       const result = await ConduitBatcher.executeAsync([
         { method: 'create', params: { token: 'CD1' } },
-      ]);
+      ], { context: TEST_CONTEXT });
       expect(result.success).toBe(true);
     });
   });

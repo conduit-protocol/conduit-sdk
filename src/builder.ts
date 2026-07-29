@@ -1,5 +1,11 @@
 import { StrKey } from '@stellar/stellar-sdk';
 import { bigintSafeStringify } from './utils.js';
+import {
+  buildBatchTransactions,
+  buildBatchTransactionsSync,
+  validateContext,
+} from './batch-tx.js';
+import type { BatchTransactionContext, BuiltBatchTransaction } from './batch-tx.js';
 
 export interface SubmitOptions {
   maxRetries?: number;
@@ -297,18 +303,80 @@ export class StreamBuilder {
 export interface BatchOperation {
   method: string;
   params: Record<string, unknown>;
+  /**
+   * Positional contract arguments. When present these are used verbatim,
+   * giving exact control over the ABI. Otherwise `params` is passed as a
+   * single map argument.
+   */
+  args?: unknown[];
 }
 
 export interface BatchExecuteOptions {
   maxBatchSize?: number;
+  /**
+   * Chain context used to build real transactions. Without it no XDR can be
+   * produced and the call reports failure rather than returning a placeholder.
+   */
+  context?: BatchTransactionContext;
+  /** Contract method invoked for each stream. Defaults to `create_stream`. */
+  method?: string;
 }
 
 export interface BatchResult {
   success: boolean;
   operations: number;
+  /**
+   * First transaction's XDR, kept for backwards compatibility.
+   *
+   * A batch is several transactions (see `xdrs`), so prefer that field. Empty
+   * string when nothing was built.
+   */
   xdr: string;
+  /**
+   * One genuine, decodable transaction XDR per operation.
+   *
+   * Soroban allows a single `InvokeHostFunction` operation per transaction, so
+   * N operations produce N transactions, to be submitted in this order.
+   */
+  xdrs?: string[];
+  /** Per-transaction detail: source operation index, method, prepared flag. */
+  transactions?: BuiltBatchTransaction[];
+  /**
+   * True when every transaction was simulated and assembled via RPC and is
+   * ready to submit. False when built offline and still needing preparation.
+   */
+  prepared?: boolean;
   chunks?: number;
   errors?: string[];
+}
+
+const MISSING_CONTEXT_ERROR =
+  'ConduitBatcher cannot build transaction XDR without a BatchTransactionContext ' +
+  '(contractId, sourceAccount, network/networkPassphrase, and either sequence or rpcUrl). ' +
+  'Pass one via options.context.';
+
+/** Shape a successful build into a BatchResult. */
+function toBatchResult(
+  built: BuiltBatchTransaction[],
+  chunks?: number,
+): BatchResult {
+  const xdrs = built.map(t => t.xdr);
+  const result: BatchResult = {
+    success: true,
+    operations: built.length,
+    xdr: xdrs[0] ?? '',
+    xdrs,
+    transactions: built,
+    prepared: built.length > 0 && built.every(t => t.prepared),
+  };
+  if (chunks !== undefined) result.chunks = chunks;
+  return result;
+}
+
+function toFailure(errors: string[], chunks?: number): BatchResult {
+  const result: BatchResult = { success: false, operations: 0, xdr: '', xdrs: [], errors };
+  if (chunks !== undefined) result.chunks = chunks;
+  return result;
 }
 
 const DEFAULT_MAX_BATCH_SIZE = 50;
@@ -382,7 +450,14 @@ function validatePayload(streams: unknown): string[] {
 interface PendingBatch {
   operations: BatchOperation[];
   signal?: AbortSignal | undefined;
+  context?: BatchTransactionContext | undefined;
   resolve: (result: BatchResult) => void;
+}
+
+export interface BatchExecuteAsyncOptions {
+  signal?: AbortSignal;
+  /** Chain context used to build real transactions. Required to produce XDR. */
+  context?: BatchTransactionContext;
 }
 
 export class ConduitBatcher {
@@ -412,24 +487,45 @@ export class ConduitBatcher {
 
     const validationErrors = validatePayload(streams);
     if (validationErrors.length > 0) {
-      return {
-        success: false,
-        operations: 0,
-        xdr: '',
-        errors: validationErrors,
-      };
+      return toFailure(validationErrors);
     }
 
-    const sanitized = streams.map(bigintSafeStringify);
+    const sanitized = streams.map(bigintSafeStringify) as Record<string, unknown>[];
     const resolvedMaxBatchSize = options?.maxBatchSize ?? DEFAULT_MAX_BATCH_SIZE;
     const chunks = sanitized.length === 0 ? 0 : Math.ceil(sanitized.length / resolvedMaxBatchSize);
 
-    return {
-      success: true,
-      operations: sanitized.length,
-      xdr: 'AAAA...mock...batch...XDR',
-      chunks,
-    };
+    // Nothing to build is a legitimate no-op, not a failure.
+    if (sanitized.length === 0) {
+      return { success: true, operations: 0, xdr: '', xdrs: [], transactions: [], prepared: true, chunks };
+    }
+
+    if (!options?.context) {
+      return toFailure([MISSING_CONTEXT_ERROR], chunks);
+    }
+
+    const contextErrors = validateContext(options.context);
+    if (contextErrors.length > 0) {
+      return toFailure(contextErrors, chunks);
+    }
+    if (options.context.sequence === undefined) {
+      // execute() is synchronous, so it cannot fetch a sequence number over
+      // RPC. Callers who only have an rpcUrl must use executeAsync().
+      return toFailure(
+        ['execute() is synchronous and cannot fetch a sequence number; ' +
+         'supply context.sequence, or use executeAsync() to fetch it via rpcUrl'],
+        chunks,
+      );
+    }
+
+    const method = options.method ?? 'create_stream';
+    const operations = sanitized.map(params => ({ method, params }));
+
+    try {
+      return toBatchResult(buildBatchTransactionsSync(operations, options.context), chunks);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return toFailure([message], chunks);
+    }
   }
 
   /**
@@ -438,14 +534,27 @@ export class ConduitBatcher {
    */
   static async executeAsync(
     operations: BatchOperation[],
-    signal?: AbortSignal,
+    signalOrOptions?: AbortSignal | BatchExecuteAsyncOptions,
   ): Promise<BatchResult> {
     if (ConduitBatcher.isDestroyed) {
       throw new Error('ConduitBatcher has been destroyed');
     }
 
+    // Accept the original `(operations, signal)` shape alongside the options
+    // object, so existing callers keep working.
+    const isSignal =
+      typeof signalOrOptions === 'object' &&
+      signalOrOptions !== null &&
+      'aborted' in signalOrOptions;
+    const signal = isSignal
+      ? (signalOrOptions as AbortSignal)
+      : (signalOrOptions as BatchExecuteAsyncOptions | undefined)?.signal;
+    const context = isSignal
+      ? undefined
+      : (signalOrOptions as BatchExecuteAsyncOptions | undefined)?.context;
+
     return new Promise<BatchResult>((resolve) => {
-      const entry: PendingBatch = { operations, signal, resolve };
+      const entry: PendingBatch = { operations, signal, context, resolve };
       ConduitBatcher.batchQueue.push(entry);
 
       const cleanup = () => {
@@ -469,7 +578,7 @@ export class ConduitBatcher {
       const entry = ConduitBatcher.batchQueue.shift();
       if (!entry) continue;
 
-      const { operations: ops, signal, resolve } = entry;
+      const { operations: ops, signal, context, resolve } = entry;
 
       let cancelled = false;
       const onAbort = () => { cancelled = true; };
@@ -483,31 +592,48 @@ export class ConduitBatcher {
 
       try {
         if (cancelled) {
-          resolve({ success: false, operations: 0, xdr: '', errors: ['Operation aborted'] });
+          resolve(toFailure(['Operation aborted']));
           continue;
         }
 
         const validationErrors = validatePayload(ops);
         if (validationErrors.length > 0) {
-          resolve({
-            success: false,
-            operations: 0,
-            xdr: '',
-            errors: validationErrors,
-          });
+          resolve(toFailure(validationErrors));
           continue;
         }
 
         const sanitized = ops.map(op => ({
           ...op,
-          params: bigintSafeStringify(op.params),
+          params: bigintSafeStringify(op.params) as Record<string, unknown>,
         }));
 
-        resolve({
-          success: true,
-          operations: sanitized.length,
-          xdr: "AAAA...mock...batch...XDR",
-        });
+        if (sanitized.length === 0) {
+          resolve({ success: true, operations: 0, xdr: '', xdrs: [], transactions: [], prepared: true });
+          continue;
+        }
+
+        if (!context) {
+          resolve(toFailure([MISSING_CONTEXT_ERROR]));
+          continue;
+        }
+
+        const contextErrors = validateContext(context);
+        if (contextErrors.length > 0) {
+          resolve(toFailure(contextErrors));
+          continue;
+        }
+
+        try {
+          const built = await buildBatchTransactions(sanitized, context);
+          if (cancelled) {
+            resolve(toFailure(['Operation aborted']));
+            continue;
+          }
+          resolve(toBatchResult(built));
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          resolve(toFailure([message]));
+        }
       } finally {
         if (signal && !cancelled) {
           signal.removeEventListener('abort', onAbort);
@@ -529,7 +655,7 @@ export class ConduitBatcher {
     ConduitBatcher.batchQueue = [];
 
     oldQueue.forEach((entry) => {
-      entry.resolve({ success: false, operations: 0, xdr: '', errors: ['ConduitBatcher cleaned up'] });
+      entry.resolve(toFailure(['ConduitBatcher cleaned up']));
     });
 
     for (const cb of ConduitBatcher.activeCallbacks) {

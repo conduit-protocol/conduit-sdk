@@ -1,5 +1,20 @@
 export { ConduitClient } from './client.js';
 export { StreamBuilder, ConduitBatcher } from './builder.js';
+export type {
+  BatchOperation,
+  BatchExecuteOptions,
+  BatchExecuteAsyncOptions,
+  BatchResult,
+} from './builder.js';
+export {
+  buildBatchTransactions,
+  buildBatchTransactionsSync,
+  BatchBuildError,
+} from './batch-tx.js';
+export type {
+  BatchTransactionContext,
+  BuiltBatchTransaction,
+} from './batch-tx.js';
 export { GraphQLIndexer } from './indexer.js';
 export { KeypairSigner } from './signer.js';
 export type { Signer } from './signer.js';

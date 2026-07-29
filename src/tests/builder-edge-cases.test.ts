@@ -1,6 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { ConduitBatcher } from '../builder.js';
 
+/** Real chain context so the batcher can build genuine transaction XDR. */
+const TEST_CONTEXT = {
+  contractId: 'CAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQC526',
+  sourceAccount: 'GAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQDZ7H',
+  network: 'testnet' as const,
+  sequence: '1',
+};
+
+
 describe('ConduitBatcher edge cases', () => {
   beforeEach(() => {
     ConduitBatcher.reset();
@@ -12,7 +21,7 @@ describe('ConduitBatcher edge cases', () => {
 
   describe('empty array handling', () => {
     it('should handle empty array payload', () => {
-      const result = ConduitBatcher.execute([]);
+      const result = ConduitBatcher.execute([], { context: TEST_CONTEXT });
       expect(result.success).toBe(true);
       expect(result.operations).toBe(0);
     });
@@ -24,7 +33,7 @@ describe('ConduitBatcher edge cases', () => {
         method: 'create',
         params: { id: i, amount: 1000n },
       }));
-      const result = ConduitBatcher.execute(largePayload);
+      const result = ConduitBatcher.execute(largePayload, { context: TEST_CONTEXT });
       expect(result.success).toBe(true);
       expect(result.operations).toBe(100);
     });
@@ -35,7 +44,7 @@ describe('ConduitBatcher edge cases', () => {
       const payload = [
         { method: 'create', params: { amountNum: 1000, amountBig: 1000n } },
       ];
-      const result = ConduitBatcher.execute(payload);
+      const result = ConduitBatcher.execute(payload, { context: TEST_CONTEXT });
       expect(result.success).toBe(true);
       expect(result.operations).toBe(1);
     });
@@ -44,7 +53,7 @@ describe('ConduitBatcher edge cases', () => {
       const payload = [
         { method: 'create', params: { config: { nested: { value: 100n } } } },
       ];
-      const result = ConduitBatcher.execute(payload);
+      const result = ConduitBatcher.execute(payload, { context: TEST_CONTEXT });
       expect(result.success).toBe(true);
     });
   });
@@ -53,14 +62,14 @@ describe('ConduitBatcher edge cases', () => {
     it('should reset state after destroy', () => {
       ConduitBatcher.destroy();
       ConduitBatcher.reset();
-      const result = ConduitBatcher.execute([{ method: 'create', params: {} }]);
+      const result = ConduitBatcher.execute([{ method: 'create', params: {} }], { context: TEST_CONTEXT });
       expect(result.success).toBe(true);
     });
 
     it('should prevent execution during destroyed state', () => {
       ConduitBatcher.destroy();
       expect(() => {
-        ConduitBatcher.execute([]);
+        ConduitBatcher.execute([], { context: TEST_CONTEXT });
       }).toThrow(/destroyed/i);
     });
   });
@@ -78,7 +87,7 @@ describe('ConduitBatcher async execution', () => {
   it('should validate operations in async context', async () => {
     const result = await ConduitBatcher.executeAsync([
       { method: 'create', params: { amount: 100 } },
-    ]);
+    ], { context: TEST_CONTEXT });
     expect(result.success).toBe(true);
     expect(result.operations).toBe(1);
   });
@@ -95,7 +104,7 @@ describe('ConduitBatcher async execution', () => {
   });
 
   it('should handle validation errors in async context', async () => {
-    const result = await ConduitBatcher.executeAsync(null as any);
+    const result = await ConduitBatcher.executeAsync(null as any, { context: TEST_CONTEXT });
     expect(result.success).toBe(false);
     expect(result.errors).toBeDefined();
   });

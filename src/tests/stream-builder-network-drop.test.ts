@@ -1,6 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import { StreamBuilder, ConduitBatcher } from '../builder.js';
 
+/** Real chain context so the batcher can build genuine transaction XDR. */
+const TEST_CONTEXT = {
+  contractId: 'CAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQC526',
+  sourceAccount: 'GAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQDZ7H',
+  network: 'testnet' as const,
+  sequence: '1',
+};
+
+
 describe('StreamBuilder Network Interruption & Payload Queueing Regression Tests', () => {
   it('throws boundary check error when build is called with missing or null parameters', () => {
     const builder = new StreamBuilder();
@@ -63,11 +72,11 @@ describe('StreamBuilder Network Interruption & Payload Queueing Regression Tests
   });
 
   it('returns validation errors from ConduitBatcher for invalid batch items', () => {
-    const emptyResult = ConduitBatcher.execute([]);
+    const emptyResult = ConduitBatcher.execute([], { context: TEST_CONTEXT });
     expect(emptyResult.success).toBe(true);
     expect(emptyResult.operations).toBe(0);
 
-    const nullItemResult = ConduitBatcher.execute([null as any]);
+    const nullItemResult = ConduitBatcher.execute([null as any], { context: TEST_CONTEXT });
     expect(nullItemResult.success).toBe(false);
     expect(nullItemResult.errors![0]).toContain('cannot be null or undefined');
   });
