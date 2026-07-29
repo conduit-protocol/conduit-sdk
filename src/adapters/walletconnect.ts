@@ -31,7 +31,7 @@ export interface WalletConnectAdapterOptions {
    * Must be one of: 'stellar:pubnet', 'stellar:testnet', 'stellar:local'.
    * Defaults to 'stellar:pubnet'.
    */
-  chainId?: string;
+  chainId?: string | undefined;
   /** DApp metadata for WalletConnect modal/handshake */
   metadata?: WalletConnectAppMetadata;
   /** Optional pre-existing WalletConnect SignClient or provider instance */
