@@ -59,6 +59,37 @@ describe('WebSocketRelayer — High-Concurrency Stress Tests', () => {
     expect(wsConstructors).toBeLessThanOrEqual(2);
   });
 
+  it('rejects connect when the socket emits an error before opening', async () => {
+    class ErroringWebSocket {
+      readyState = 0;
+      onopen: (() => void) | null = null;
+      onmessage: ((event: { data: string }) => void) | null = null;
+      onclose: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      send = vi.fn();
+      close = vi.fn();
+
+      constructor() {
+        setTimeout(() => {
+          this.onerror?.();
+        }, 0);
+      }
+    }
+
+    (global as any).WebSocket = vi.fn(() => new ErroringWebSocket()) as any;
+    const failingRelayer = new WebSocketRelayer('ws://localhost:65535', {
+      maxReconnectAttempts: 0,
+      reconnectDelayMs: 1,
+    });
+
+    await expect(failingRelayer.connect()).rejects.toThrow(
+      'WebSocket connection failed: ws://localhost:65535',
+    );
+    expect((global as any).WebSocket).toHaveBeenCalledTimes(1);
+
+    failingRelayer.destroy();
+  });
+
   it('queues messages sent before connection and flushes on connect', async () => {
     const relayer2 = new WebSocketRelayer('ws://localhost:8081', {
       maxReconnectAttempts: 1,

@@ -113,7 +113,11 @@ export class WebSocketRelayer {
           return;
         }
 
+        let settled = false;
+
         ws.onopen = () => {
+          if (settled) return;
+          settled = true;
           this.reconnectAttempts = 0;
           this.flushPendingMessages();
           resolve();
@@ -125,13 +129,18 @@ export class WebSocketRelayer {
 
         ws.onclose = () => {
           this.ws = null;
+          if (!settled) {
+            settled = true;
+            reject(new Error(`WebSocket connection closed before opening: ${this.url}`));
+          }
           if (!this.isDestroyed) {
             this.attemptReconnect();
           }
         };
 
         ws.onerror = () => {
-          if (this.ws === null) {
+          if (!settled) {
+            settled = true;
             reject(new Error(`WebSocket connection failed: ${this.url}`));
           }
         };
