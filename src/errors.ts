@@ -8,6 +8,14 @@
  */
 export type ConduitContract = 'stream' | 'factory' | 'governor';
 
+/**
+ * Sentinel value used by {@link ConduitError.fromContractError} when the
+ * contract error code does not match any known code in the SDK's error
+ * catalogue. Use this constant (or {@link ConduitError.isKnown}) instead
+ * of hardcoding `-1` in consumer code.
+ */
+export const UNKNOWN_CONTRACT_ERROR_CODE = -1;
+
 // ── DripStream errors (contracts/stream/src/errors.rs) ────────────────────────
 
 export enum StreamErrorCode {
@@ -150,6 +158,15 @@ export class ConduitError extends Error {
     this.code = code;
   }
 
+  /**
+   * Returns `true` when this error carries a known contract error code
+   * (i.e. the code exists in the SDK's error catalogue for this contract).
+   * Returns `false` when the code is {@link UNKNOWN_CONTRACT_ERROR_CODE}.
+   */
+  get isKnown(): boolean {
+    return this.code in MESSAGES_BY_CONTRACT[this.contract];
+  }
+
   /** Builds a ConduitError from a raw `{ code: number }`-shaped contract error object. */
   static fromContractError(contract: ConduitContract, raw: unknown): ConduitError {
     if (raw && typeof raw === 'object' && 'code' in raw) {
@@ -158,7 +175,7 @@ export class ConduitError extends Error {
         return new ConduitError(contract, code);
       }
     }
-    return new ConduitError(contract, -1, String(raw));
+    return new ConduitError(contract, UNKNOWN_CONTRACT_ERROR_CODE, String(raw));
   }
 
   /**

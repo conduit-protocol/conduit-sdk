@@ -10,6 +10,7 @@ export {
   GovernorErrorCode,
   UnsupportedChainError,
   SUPPORTED_NETWORKS,
+  UNKNOWN_CONTRACT_ERROR_CODE,
 } from './errors.js';
 export type { ConduitContract } from './errors.js';
 export * from './types/index.js';
