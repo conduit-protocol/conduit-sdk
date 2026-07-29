@@ -173,13 +173,20 @@ export class WalletConnectAdapter implements WalletAdapter {
    * Disconnect the WalletConnect session.
    */
   async disconnect(): Promise<void> {
-    if (this.client && this.session && typeof this.client.disconnect === 'function') {
-      await this.client.disconnect({
-        topic: this.session.topic,
-        reason: { code: 6000, message: 'User disconnected' },
-      });
+    const session = this.session;
+    try {
+      if (this.client && session && typeof this.client.disconnect === 'function') {
+        await this._withTimeout(
+          this.client.disconnect({
+            topic: session.topic,
+            reason: { code: 6000, message: 'User disconnected' },
+          }),
+          'WalletConnect disconnect()'
+        );
+      }
+    } finally {
+      this.session = null;
     }
-    this.session = null;
   }
 
   /**
