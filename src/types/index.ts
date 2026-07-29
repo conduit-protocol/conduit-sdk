@@ -79,7 +79,7 @@ export interface PaginatedStreams {
   streams:    StreamInfo[];
   /** Whether there are more results after this page */
   hasNextPage: boolean;
-  /** Total number of stream IDs the factory tracks for this address */
+  /** Number of filtered stream IDs seen through the end of this page */
   totalCount:  bigint;
   /** The offset used for this page */
   offset:      number;

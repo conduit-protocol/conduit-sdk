@@ -193,7 +193,7 @@ describe('StreamsModule — list()', () => {
     );
   });
 
-  it('returns hasNextPage=true when there are more results', async () => {
+  it('returns hasNextPage=true when the filtered sender page is full', async () => {
     mockStreamsBySender.mockResolvedValue([1n, 2n, 3n]);
     mockStreamCount.mockResolvedValue(50n);
     // Mock get() to return minimal valid StreamInfo
@@ -204,16 +204,17 @@ describe('StreamsModule — list()', () => {
     const result = await sdk.list({
       sender: 'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN',
       offset: 0,
-      limit: 20,
+      limit: 3,
     });
     expect(result.hasNextPage).toBe(true);
-    expect(result.totalCount).toBe(50n);
+    expect(result.totalCount).toBe(3n);
     expect(result.streams).toHaveLength(3);
+    expect(mockStreamCount).not.toHaveBeenCalled();
   });
 
-  it('returns hasNextPage=false when on the last page', async () => {
+  it('returns hasNextPage=false when a filtered sender page is not full', async () => {
     mockStreamsBySender.mockResolvedValue([1n, 2n]);
-    mockStreamCount.mockResolvedValue(12n);
+    mockStreamCount.mockResolvedValue(5000n);
     mockStreamAddress.mockResolvedValue('CCWAMYJME27OHTPKVSV252YRPXEO4BSKBHVLQ7ML3OWYNMB5RQEVHSM');
     mockSimulate.mockResolvedValue({ result: { retval: xdr.ScVal.scvMap([]) } });
     const { StreamsModule } = await import('../streams.js');
@@ -225,15 +226,24 @@ describe('StreamsModule — list()', () => {
     });
     expect(result.hasNextPage).toBe(false);
     expect(result.totalCount).toBe(12n);
+    expect(mockStreamCount).not.toHaveBeenCalled();
   });
 
-  it('calls streamCount in parallel with streamsBySender', async () => {
-    mockStreamsBySender.mockResolvedValue([]);
-    mockStreamCount.mockResolvedValue(5n);
+  it('does not use the global streamCount for recipient-filtered pagination', async () => {
+    mockStreamsByRecipient.mockResolvedValue([5n]);
+    mockStreamCount.mockResolvedValue(5000n);
+    mockStreamAddress.mockResolvedValue('CCWAMYJME27OHTPKVSV252YRPXEO4BSKBHVLQ7ML3OWYNMB5RQEVHSM');
+    mockSimulate.mockResolvedValue({ result: { retval: xdr.ScVal.scvMap([]) } });
     const { StreamsModule } = await import('../streams.js');
     const sdk = new StreamsModule(makeConfig(false));
-    await sdk.list({ sender: 'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN' });
-    expect(mockStreamCount).toHaveBeenCalled();
+    const result = await sdk.list({
+      recipient: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
+      offset: 20,
+      limit: 20,
+    });
+    expect(result.hasNextPage).toBe(false);
+    expect(result.totalCount).toBe(21n);
+    expect(mockStreamCount).not.toHaveBeenCalled();
   });
 });
 

@@ -322,8 +322,8 @@ export class StreamsModule {
 
   /**
    * List streams by sender or recipient with pagination metadata.
-   * Returns a page of StreamInfo along with hasNextPage and totalCount so
-   * the frontend can implement infinite scrolling.
+   * Returns a page of StreamInfo along with pagination metadata so the
+   * frontend can implement infinite scrolling.
    */
   async list(params: ListStreamsParams): Promise<PaginatedStreams> {
     const { sender, recipient, limit = 20 } = params;
@@ -351,40 +351,27 @@ export class StreamsModule {
 
     let ids: bigint[] = [];
 
-    // Fetch stream IDs and total count in parallel Ã¢â‚¬â€ totalCount comes from
-    // stream_count() on the factory, which is a cheap Soroban simulate.
+    const pageFromFilteredIds = async (filteredIds: bigint[]): Promise<PaginatedStreams> => {
+      ids = filteredIds;
+      const streams = await Promise.all(ids.map(id => this.get(id)));
+      const hasNextPage = ids.length === limit;
+      const totalCount = BigInt(offset + ids.length);
+      return {
+        streams,
+        hasNextPage,
+        totalCount,
+        offset,
+        limit,
+        ...(hasNextPage ? { nextCursor: encodeCursor(offset + limit) } : {}),
+      };
+    };
+
+    // Sender/recipient contract queries already return the filtered page.
+    // There is no scoped count method, so do not mix in global stream_count().
     if (sender) {
-      const [senderIds, totalCount] = await Promise.all([
-        this._factory.streamsBySender(sender, offset, limit),
-        this._factory.streamCount(),
-      ]);
-      ids = senderIds;
-      const streams = await Promise.all(ids.map(id => this.get(id)));
-      const hasNextPage = BigInt(offset) + BigInt(limit) < totalCount;
-      return {
-        streams,
-        hasNextPage,
-        totalCount,
-        offset,
-        limit,
-        ...(hasNextPage ? { nextCursor: encodeCursor(offset + limit) } : {}),
-      };
+      return pageFromFilteredIds(await this._factory.streamsBySender(sender, offset, limit));
     } else if (recipient) {
-      const [recipientIds, totalCount] = await Promise.all([
-        this._factory.streamsByRecipient(recipient, offset, limit),
-        this._factory.streamCount(),
-      ]);
-      ids = recipientIds;
-      const streams = await Promise.all(ids.map(id => this.get(id)));
-      const hasNextPage = BigInt(offset) + BigInt(limit) < totalCount;
-      return {
-        streams,
-        hasNextPage,
-        totalCount,
-        offset,
-        limit,
-        ...(hasNextPage ? { nextCursor: encodeCursor(offset + limit) } : {}),
-      };
+      return pageFromFilteredIds(await this._factory.streamsByRecipient(recipient, offset, limit));
     }
 
    // Neither sender nor recipient Ã¢â‚¬â€ return empty page
