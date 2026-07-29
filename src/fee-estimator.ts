@@ -7,10 +7,19 @@ export interface FeeEstimatorOptions {
   minRefetchIntervalMs?: number;
 }
 
+/**
+ * Options for fee estimation with error handling callback.
+ */
+
 export interface FeeEstimateOptions {
   onError?: (error: Error) => void;
 }
 
+/**
+ * Estimates Soroban fees with caching and fallback behavior.
+ * Represents all fees as bigint stroops to maintain precision and avoid IEEE-754 rounding errors.
+ * Consistent with the SDK's bigint-stroops convention used for all on-chain monetary amounts.
+ */
 export class FeeEstimator {
   private baseFee: bigint;
   private isEstimating: boolean = false;
@@ -19,6 +28,12 @@ export class FeeEstimator {
   private lastSuccessfulFetchAtValue: number | null = null;
   private lastErrorValue: Error | null = null;
 
+  /**
+   * Creates a new FeeEstimator instance.
+   *
+   * @param initialFee - Starting fee in stroops (bigint). Defaults to 100n stroops.
+   * @param options - Configuration options for caching behavior.
+   */
   constructor(initialFee: bigint = 100n, options?: FeeEstimatorOptions) {
     this.baseFee = initialFee;
     this.minRefetchIntervalMs = options?.minRefetchIntervalMs ?? 0;
@@ -80,11 +95,16 @@ export class FeeEstimator {
     return this.currentPromise;
   }
 
-  // Exposed for testing internal state
   get _isEstimating(): boolean {
     return this.isEstimating;
   }
 
+  /**
+   * Returns the current base fee in stroops (bigint).
+   * This is either the last successfully fetched value or the initial/fallback fee.
+   *
+   * @returns The base fee as bigint stroops.
+   */
   getBaseFee(): bigint {
     return this.baseFee;
   }

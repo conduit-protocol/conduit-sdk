@@ -465,6 +465,12 @@ export interface BatchExecuteAsyncOptions {
   context?: BatchTransactionContext;
 }
 
+/**
+ * Batches multiple stream operations into a single transaction.
+ * Maintains independent state per instance (not a global singleton).
+ * Each instance has its own queue, destroy flag, and processing state,
+ * allowing multiple independent batchers to run side-by-side without interference.
+ */
 export class ConduitBatcher {
   private activeCallbacks: Set<() => void> = new Set();
   private isDestroyed = false;
@@ -472,7 +478,7 @@ export class ConduitBatcher {
   private processingBatch = false;
 
   /**
-   * Bundle multiple stream operations into a single transaction.
+   * Bundle multiple stream operations into a single transaction (synchronous).
    *
    * Any `bigint` fields inside the stream objects are converted to
    * strings before further processing so that downstream
