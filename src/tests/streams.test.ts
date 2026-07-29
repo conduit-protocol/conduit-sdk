@@ -265,6 +265,28 @@ describe('StreamsModule — subscribe()', () => {
     // Unsubscribe immediately — should not throw even before async resolves
     expect(() => sub.unsubscribe()).not.toThrow();
   });
+
+  it('surfaces subscribeAsync failures through onError', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    mockStreamAddress.mockResolvedValue(null);
+
+    const { StreamsModule } = await import('../streams.js');
+    const sdk = new StreamsModule(makeConfig(false));
+    const onError = vi.fn();
+
+    const sub = sdk.subscribe(42n, { onError });
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledTimes(1));
+
+    expect(onError.mock.calls[0]![0]).toBeInstanceOf(Error);
+    expect(onError.mock.calls[0]![0].message).toContain('Stream 42 not found');
+    expect(warn).toHaveBeenCalledWith(
+      '[conduit-sdk] subscribe error:',
+      onError.mock.calls[0]![0],
+    );
+
+    sub.unsubscribe();
+    warn.mockRestore();
+  });
 });
 
 describe('StreamsModule — subscribeAsync()', () => {

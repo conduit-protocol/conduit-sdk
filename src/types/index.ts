@@ -113,6 +113,7 @@ export interface StreamEventHandlers {
   onResume?:   (e: ResumeEvent)    => void;
   onTopUp?:    (e: TopUpEvent)     => void;
   onClawback?: (e: ClawbackEvent)  => void;
+  onError?:    (error: Error)      => void;
   /** Polling interval in ms; default 5000 */
   pollInterval?: number;
 }

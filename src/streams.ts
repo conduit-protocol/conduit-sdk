@@ -396,7 +396,11 @@ export class StreamsModule {
 
     this.subscribeAsync(streamId, handlers)
       .then(sub => { if (!stopped) inner = sub; else sub.unsubscribe(); })
-      .catch(err => console.warn('[conduit-sdk] subscribe error:', err));
+      .catch(err => {
+        const error = err instanceof Error ? err : new Error(String(err));
+        handlers.onError?.(error);
+        console.warn('[conduit-sdk] subscribe error:', error);
+      });
 
     return {
       unsubscribe: () => {
