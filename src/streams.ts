@@ -1,5 +1,5 @@
 /**
- * StreamsModule Ã¢â‚¬â€ all DripStream + DripFactory operations.
+ * StreamsModule - all DripStream + DripFactory operations.
  */
 
 import { SorobanRpc, nativeToScVal, xdr, Address, Transaction } from '@stellar/stellar-sdk';
@@ -33,7 +33,7 @@ import {
 import { FactoryModule } from './factory.js';
 import { ConduitError, RateLimitError, StreamErrorCode } from './errors.js';
 
-// ── Deprecation warnings ─────────────────────────────────────────────────
+// Deprecation warnings
 
 /**
  * Tracks which v1-deprecated methods have already warned this session, so
@@ -109,7 +109,7 @@ export class StreamsModule {
   /**
    * Resolve the caller address, handling both sync and async getPublicKey().
    * Unlike _signerPublicKey(), this can be used when the wallet adapter
-   * returns a promise Ã¢â‚¬â€ but it MUST only be called from async contexts.
+   * returns a promise - but it MUST only be called from async contexts.
    */
   private async _resolveCallerAddress(): Promise<string> {
     if (this.activeWallet) {
@@ -218,7 +218,7 @@ export class StreamsModule {
     return parseStreamInfo(id, addr, val);
   }
 
-  /** Get withdrawable balance Ã¢â‚¬â€ read-only, no transaction. */
+  /** Get withdrawable balance - read-only, no transaction. */
   async withdrawable(streamId: bigint | string): Promise<bigint> {
     const id   = BigInt(streamId);
     const addr = await this._resolveAddr(id);
@@ -376,7 +376,7 @@ export class StreamsModule {
       return pageFromFilteredIds(await this._factory.streamsByRecipient(recipient, offset, limit));
     }
 
-   // Neither sender nor recipient Ã¢â‚¬â€ return empty page
+   // Neither sender nor recipient - return empty page
     return { streams: [], hasNextPage: false, totalCount: 0n, offset, limit };
   }
 
@@ -391,7 +391,7 @@ export class StreamsModule {
     return subscribeToStream(this.config.rpcUrl!, address, handlers);
   }
 
-  /** Synchronous subscribe Ã¢â‚¬â€ resolves address lazily on first poll tick. */
+  /** Synchronous subscribe - resolves address lazily on first poll tick. */
   subscribe(streamId: bigint | string, handlers: StreamEventHandlers): Subscription {
     let inner: Subscription | null = null;
     let stopped = false;
@@ -417,7 +417,7 @@ export class StreamsModule {
     };
   }
 
-  // Ã¢â€â‚¬Ã¢â€â‚¬ Private helpers Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+  // Private helpers
 
   private _ensureCanMutate(): void {
     if (!this.activeWallet && !this.config.signer && !this.config.keypair) {
@@ -535,7 +535,7 @@ export class StreamsModule {
   }
 }
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ Parsing Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// Parsing
 
 function parseStreamInfo(id: bigint, address: string, val: xdr.ScVal): StreamInfo {
   const entries = val.map() ?? [];
