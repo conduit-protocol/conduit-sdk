@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { RateLimitError } from '../errors.js';
 
 describe('RateLimitError.fromRpcError', () => {
@@ -18,6 +18,46 @@ describe('RateLimitError.fromRpcError', () => {
     expect(result).toBeInstanceOf(Error);
     expect(result?.name).toBe('RateLimitError');
     expect(result?.retryAfterMs).toBe(2000);
+  });
+
+  it('parses an HTTP-date Retry-After header into milliseconds', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-21T07:27:00.000Z'));
+
+    const result = RateLimitError.fromRpcError({
+      response: {
+        status: 429,
+        headers: { 'retry-after': 'Wed, 21 Oct 2026 07:28:00 GMT' },
+      },
+    });
+
+    expect(result).toBeInstanceOf(RateLimitError);
+    expect(result?.retryAfterMs).toBe(60_000);
+
+    vi.useRealTimers();
+  });
+
+  it('does not return NaN for past or invalid Retry-After values', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-21T07:29:00.000Z'));
+
+    const pastDate = RateLimitError.fromRpcError({
+      response: {
+        status: 429,
+        headers: { 'retry-after': 'Wed, 21 Oct 2026 07:28:00 GMT' },
+      },
+    });
+    const invalid = RateLimitError.fromRpcError({
+      response: {
+        status: 429,
+        headers: { 'retry-after': 'not a date or delay' },
+      },
+    });
+
+    expect(pastDate?.retryAfterMs).toBe(0);
+    expect(invalid?.retryAfterMs).toBeUndefined();
+
+    vi.useRealTimers();
   });
 
   it('detects a raw JSON-RPC rate-limit error object (not an Error instance)', () => {

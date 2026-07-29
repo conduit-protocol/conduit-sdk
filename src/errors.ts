@@ -195,6 +195,25 @@ export class RateLimitError extends Error {
     Object.setPrototypeOf(this, new.target.prototype);
   }
 
+  private static parseRetryAfterMs(raw: unknown): number | undefined {
+    if (typeof raw !== 'string' && typeof raw !== 'number') return undefined;
+
+    const value = String(raw).trim();
+    if (!value) return undefined;
+
+    const delaySeconds = Number(value);
+    if (Number.isFinite(delaySeconds) && delaySeconds >= 0) {
+      return delaySeconds * 1000;
+    }
+
+    const retryAt = Date.parse(value);
+    if (!Number.isNaN(retryAt)) {
+      return Math.max(0, retryAt - Date.now());
+    }
+
+    return undefined;
+  }
+
   /**
    * Detects a rate-limit condition from a raw error thrown by the RPC
    * client and converts it into a typed RateLimitError. Handles two shapes:
@@ -214,7 +233,7 @@ export class RateLimitError extends Error {
     const response = (raw as { response?: { status?: number; headers?: Record<string, unknown> } }).response;
     if (response?.status === 429) {
       const retryAfterHeader = response.headers?.['retry-after'];
-      const retryAfterMs = retryAfterHeader != null ? Number(retryAfterHeader) * 1000 : undefined;
+      const retryAfterMs = RateLimitError.parseRetryAfterMs(retryAfterHeader);
       return new RateLimitError(
         'RPC node rate limit exceeded (429 Too Many Requests). Back off and retry.',
         retryAfterMs,
