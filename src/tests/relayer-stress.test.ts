@@ -273,4 +273,27 @@ describe('WebSocketRelayer — High-Concurrency Stress Tests', () => {
 
     expect(relayer.state.pendingCount).toBe(3);
   });
+
+  it('notifies subscribers when connection state changes', async () => {
+    const handler = vi.fn();
+    const unsubscribe = relayer.onStateChange(handler);
+
+    await relayer.connect();
+    relayer.disconnect();
+
+    expect(handler.mock.calls.map(([transition]) => transition)).toEqual([
+      'connecting',
+      'connected',
+      'disconnected',
+    ]);
+    expect(handler.mock.calls[1]![1]).toMatchObject({
+      connected: true,
+      destroyed: false,
+    });
+
+    unsubscribe();
+    relayer.destroy();
+
+    expect(handler).toHaveBeenCalledTimes(3);
+  });
 });
