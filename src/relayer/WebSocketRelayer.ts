@@ -66,22 +66,16 @@ export class WebSocketRelayer {
     if (this.isDestroyed) {
       throw new Error('WebSocketRelayer has been destroyed');
     }
-    if (this.connectPromise) {
-      return this.connectPromise;
-    }
-
-    await this.acquireLock();
-    try {
-      if (this.ws && this.ws.readyState === 1) {
-        return;
+    return this.connectPromise ?? (this.connectPromise = (async () => {
+      try {
+        await this.acquireLock();
+        if (this.ws && this.ws.readyState === 1) return;
+        await this.establishConnection();
+      } finally {
+        this.connectPromise = null;
+        this.releaseLock();
       }
-
-      this.connectPromise = this.establishConnection();
-      await this.connectPromise;
-    } finally {
-      this.releaseLock();
-      this.connectPromise = null;
-    }
+    })());
   }
 
   private wsCtor(): typeof WebSocket | null {
@@ -102,17 +96,18 @@ export class WebSocketRelayer {
 
     return new Promise((resolve, reject) => {
       try {
-        let ws: WebSocket;
+        let wsInstance: any;
         try {
-          ws = new WebSocketCtor(this.url);
+          wsInstance = new (WebSocketCtor as any)(this.url);
         } catch {
-          ws = (WebSocketCtor as unknown as (url: string) => WebSocket)(this.url);
+          // Fallback for mocks that are plain functions.
+          wsInstance = (WebSocketCtor as any)(this.url);
         }
+        const ws = wsInstance;
         if (!ws) {
           resolve();
           return;
         }
-
         let settled = false;
 
         ws.onopen = () => {
@@ -133,7 +128,7 @@ export class WebSocketRelayer {
             settled = true;
             reject(new Error(`WebSocket connection closed before opening: ${this.url}`));
           }
-          if (!this.isDestroyed) {
+          if (!settled && !this.isDestroyed) {
             this.attemptReconnect();
           }
         };

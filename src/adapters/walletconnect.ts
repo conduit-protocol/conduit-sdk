@@ -31,7 +31,7 @@ export interface WalletConnectAdapterOptions {
    * Must be one of: 'stellar:pubnet', 'stellar:testnet', 'stellar:local'.
    * Defaults to 'stellar:pubnet'.
    */
-  chainId?: string;
+  chainId?: string | undefined;
   /** DApp metadata for WalletConnect modal/handshake */
   metadata?: WalletConnectAppMetadata;
   /** Optional pre-existing WalletConnect SignClient or provider instance */
@@ -60,7 +60,7 @@ const SUPPORTED_CAIP2_CHAINS: Readonly<Record<string, string>> = {
  */
 export class WalletConnectAdapter implements WalletAdapter {
   private readonly projectId?: string | undefined;
-  private readonly chainId: string;
+  public readonly chainId: string;
   private readonly metadata?: WalletConnectAppMetadata | undefined;
   private client: WalletConnectSignClient | null;
   private session: WalletConnectSession | null;

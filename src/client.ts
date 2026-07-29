@@ -36,7 +36,7 @@ function assertWalletNetworkMatch(
   wallet: WalletAdapter,
   expectedNetwork: string,
 ): void {
-  const raw = (wallet as unknown as { chainId?: unknown }).chainId;
+  const raw = wallet.chainId;
   if (raw === undefined || raw === null) return;
 
   const caip2 = String(raw);
