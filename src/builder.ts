@@ -7,6 +7,8 @@ export interface SubmitOptions {
   concurrency?: number;
   /** Max pending queue size before backpressure kicks in. Default 100. */
   maxQueueSize?: number;
+  /** AbortSignal to cancel the submission while in-flight. */
+  signal?: AbortSignal;
 }
 
 const DEFAULT_CONCURRENCY = 10;
@@ -174,6 +176,11 @@ export class StreamBuilder {
       throw new Error('submitFn must be a valid function');
     }
 
+    const { signal } = options;
+    if (signal?.aborted) {
+      throw new DOMException('Aborted', 'AbortError');
+    }
+
     // Backpressure: reject if queue is full
     if (this.pendingQueue.length >= this._maxQueueSize) {
       throw new Error(
@@ -198,6 +205,10 @@ export class StreamBuilder {
           throw new Error('StreamBuilder was destroyed during submission');
         }
 
+        if (signal?.aborted) {
+          throw new DOMException('Aborted', 'AbortError');
+        }
+
         try {
           const result = await submitFn(payload as unknown as Record<string, unknown>);
           const index = this.pendingQueue.indexOf(payload as unknown as Record<string, unknown>);
@@ -206,17 +217,30 @@ export class StreamBuilder {
           }
           return result;
         } catch (err) {
+          if (signal?.aborted) {
+            throw new DOMException('Aborted', 'AbortError');
+          }
           lastError = err;
           attempt++;
           if (attempt <= maxRetries) {
             // Exponential backoff: delay doubles each retry
             const delay = baseRetryDelay * Math.pow(2, attempt - 1);
-            await new Promise<void>((resolve) => {
+            await new Promise<void>((resolve, reject) => {
               const timer = setTimeout(() => {
                 this.activeTimers.delete(timer);
                 resolve();
               }, delay);
               this.activeTimers.add(timer);
+
+              if (signal) {
+                const onAbort = () => {
+                  clearTimeout(timer);
+                  this.activeTimers.delete(timer);
+                  signal.removeEventListener('abort', onAbort);
+                  reject(new DOMException('Aborted', 'AbortError'));
+                };
+                signal.addEventListener('abort', onAbort, { once: true });
+              }
             });
           }
         }
