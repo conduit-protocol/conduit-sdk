@@ -51,7 +51,7 @@ export class GraphQLIndexer {
       ...options.headers,
     };
 
-    const fetchFn = typeof fetch !== 'undefined' ? fetch : (globalThis as any).fetch;
+    const fetchFn = typeof fetch !== 'undefined' ? fetch : (globalThis as unknown as { fetch?: typeof fetch }).fetch;
     if (typeof fetchFn !== 'function') {
       throw new Error('Fetch API is not available in the current environment');
     }
@@ -182,7 +182,7 @@ export class GraphQLIndexer {
           }
         };
 
-        socket.onerror = (event: Event) => {
+        socket.onerror = (_event: Event) => {
           if (unsubscribed || this.isDestroyed) return;
           this.handleError(options.onError, new Error(`GraphQL subscription WebSocket error on ${this.endpoint}`));
         };
@@ -196,7 +196,7 @@ export class GraphQLIndexer {
         this.handleError(options.onError, err);
       }
     } else {
-      const fetchFn = typeof fetch !== 'undefined' ? fetch : (globalThis as any).fetch;
+      const fetchFn = typeof fetch !== 'undefined' ? fetch : (globalThis as unknown as { fetch?: typeof fetch }).fetch;
       if (typeof fetchFn === 'function' && typeof AbortController !== 'undefined') {
         abortController = new AbortController();
         const headers: Record<string, string> = {
@@ -211,7 +211,7 @@ export class GraphQLIndexer {
           body: JSON.stringify({ query: options.query, variables }),
           signal: abortController.signal,
         })
-          .then(async (response: any) => {
+          .then(async (response: Response) => {
             if (unsubscribed || this.isDestroyed) return;
             if (!response.ok) {
               this.handleError(options.onError, new Error(`GraphQL subscription HTTP error: ${response.status}`));
@@ -243,8 +243,9 @@ export class GraphQLIndexer {
               }
             }
           })
-          .catch((err: any) => {
-            if (!unsubscribed && !this.isDestroyed && err?.name !== 'AbortError') {
+          .catch((err: unknown) => {
+            const isAbort = err instanceof Error && err.name === 'AbortError';
+            if (!unsubscribed && !this.isDestroyed && !isAbort) {
               this.handleError(options.onError, err);
             }
           });
@@ -267,8 +268,8 @@ export class GraphQLIndexer {
   }
 
   private getWebSocketCtor(): (new (url: string | URL, protocols?: string | string[]) => WebSocket) | null {
-    if (typeof globalThis !== 'undefined' && 'WebSocket' in globalThis && typeof (globalThis as any).WebSocket === 'function') {
-      return (globalThis as any).WebSocket;
+    if (typeof globalThis !== 'undefined' && 'WebSocket' in globalThis && typeof (globalThis as unknown as { WebSocket?: typeof WebSocket }).WebSocket === 'function') {
+      return (globalThis as unknown as { WebSocket?: typeof WebSocket }).WebSocket ?? null;
     }
     if (typeof WebSocket !== 'undefined' && typeof WebSocket === 'function') {
       return WebSocket;
