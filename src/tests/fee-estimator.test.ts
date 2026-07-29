@@ -49,8 +49,8 @@ describe('FeeEstimator - Race condition and edge cases', () => {
     // Fallback should return the original base fee
     expect(fee).toBe(100);
     expect(onError).toHaveBeenCalledTimes(1);
-    expect(onError.mock.calls[0][0]).toBeInstanceOf(Error);
-    expect(onError.mock.calls[0][0].message).toBe('Network error');
+    expect(onError.mock.calls[0]![0]).toBeInstanceOf(Error);
+    expect(onError.mock.calls[0]![0].message).toBe('Network error');
     expect(estimator.lastError?.message).toBe('Network error');
     expect(estimator.lastSuccessfulFetchAt).toBeNull();
     expect(estimator.isStale).toBe(true);
@@ -68,7 +68,7 @@ describe('FeeEstimator - Race condition and edge cases', () => {
     // Boundary checks should catch this and fallback
     expect(fee).toBe(100);
     expect(onError).toHaveBeenCalledTimes(1);
-    expect(onError.mock.calls[0][0].message).toBe('Invalid network fee response');
+    expect(onError.mock.calls[0]![0].message).toBe('Invalid network fee response');
     expect(estimator.lastError?.message).toBe('Invalid network fee response');
     expect(estimator.isStale).toBe(true);
   });
