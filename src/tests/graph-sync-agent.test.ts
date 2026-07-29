@@ -37,28 +37,36 @@ describe('GraphSyncAgent - Race condition and fractional rounding', () => {
     expect(result).toBe(0.3); // Normal JS math yields 0.30000000000000004 without proper rounding
   });
 
-  it('should execute the fallback sequence when network fails with unhandled promise rejection', async () => {
+  it('should reject when the network fetcher fails', async () => {
     const agent = new GraphSyncAgent(10);
     
     const failingFetcher = async () => {
       throw new Error('Network timeout');
     };
 
-    const state = await agent.syncState(failingFetcher);
-    
-    // Fallback should leave the state unchanged
-    expect(state).toBe(10);
+    await expect(agent.syncState(failingFetcher)).rejects.toThrow('Network timeout');
+    expect(agent.getCurrentState()).toBe(10);
   });
   
-  it('should handle invalid math gracefully', async () => {
+  it('should reject invalid math responses', async () => {
     const agent = new GraphSyncAgent(5);
     
     const badMathFetcher = async () => {
       return NaN; 
     };
 
-    const state = await agent.syncState(badMathFetcher);
-    // Boundary checks should catch this and fallback to 5
-    expect(state).toBe(5);
+    await expect(agent.syncState(badMathFetcher)).rejects.toThrow('Invalid network delta response');
+    expect(agent.getCurrentState()).toBe(5);
+  });
+
+  it('should continue accepting updates after a rejected sync', async () => {
+    const agent = new GraphSyncAgent(7);
+
+    await expect(agent.syncState(async () => {
+      throw new Error('temporary graph outage');
+    })).rejects.toThrow('temporary graph outage');
+
+    const state = await agent.syncState(async () => 0.25);
+    expect(state).toBe(7.25);
   });
 });
