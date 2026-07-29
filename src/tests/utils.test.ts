@@ -142,9 +142,10 @@ describe('streamProgress', () => {
     expect(p).toBeLessThan(0.51);
   });
 
-  it('returns 0 for open-ended streams', () => {
-    const s = makeStream({ endTime: 0 });
-    expect(streamProgress(s)).toBe(0);
+  it('returns NaN for open-ended streams that have already started', () => {
+    const now = Math.floor(Date.now() / 1000);
+    const s = makeStream({ startTime: now - 100, endTime: 0 });
+    expect(Number.isNaN(streamProgress(s, now))).toBe(true);
   });
 });
 

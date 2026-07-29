@@ -39,12 +39,13 @@ export function calculateRate(depositAmount: string, durationSecs: number, decim
 
 /**
  * Current progress fraction (0-1) of a stream.
- * Returns 0 if not started, 1 if ended.
+ * Returns 0 if not started, 1 if ended, and NaN for open-ended streams
+ * that have started but do not have a finite completion percentage.
  */
 export function streamProgress(stream: StreamInfo, nowSec = Math.floor(Date.now() / 1000)): number {
   const { startTime, endTime } = stream;
   if (nowSec < startTime) return 0;
-  if (endTime === 0)       return 0;  // open-ended
+  if (endTime === 0)       return Number.NaN;  // open-ended
   if (nowSec >= endTime)   return 1;
   return (nowSec - startTime) / (endTime - startTime);
 }
