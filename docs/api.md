@@ -165,10 +165,10 @@ sub.unsubscribe();
 ```typescript
 interface GovernorConfig {
   feeBps:             number;
-  feeRecipient:       string;
+  feeRecipient?:      string;
   minDurationSeconds: number;
   maxRatePerSecond:   bigint;
-  factoryAddress:     string;
+  factoryAddress?:    string;
 }
 ```
 

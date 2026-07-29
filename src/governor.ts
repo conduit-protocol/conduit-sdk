@@ -66,9 +66,9 @@ function parseGovernorConfig(val: xdr.ScVal): GovernorConfig {
   }
   return {
     feeBps:             m['fee_bps']?.u32() ?? 0,
-    feeRecipient:       m['fee_recipient'] ? Address.fromScVal(m['fee_recipient']).toString() : '',
+    feeRecipient:       m['fee_recipient'] ? Address.fromScVal(m['fee_recipient']).toString() : undefined,
     minDurationSeconds: m['min_duration_seconds'] ? Number(scValToU64(m['min_duration_seconds'])) : 0,
     maxRatePerSecond:   m['max_rate_per_second'] ? scValToI128(m['max_rate_per_second']) : 0n,
-    factoryAddress:     m['factory_address'] ? Address.fromScVal(m['factory_address']).toString() : '',
+    factoryAddress:     m['factory_address'] ? Address.fromScVal(m['factory_address']).toString() : undefined,
   };
 }

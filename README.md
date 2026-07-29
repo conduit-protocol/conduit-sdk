@@ -364,10 +364,10 @@ const config = await client.governor.config();
 // Returns:
 // {
 //   feeBps:               number,
-//   feeRecipient:         string,
+//   feeRecipient?:        string,
 //   minDurationSeconds:   number,
 //   maxRatePerSecond:     bigint,
-//   factoryAddress:       string,
+//   factoryAddress?:      string,
 // }
 ```
 

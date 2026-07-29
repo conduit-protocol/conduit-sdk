@@ -129,7 +129,7 @@ describe('GovernorModule — getConfig()', () => {
     expect(config.feeRecipient).not.toBe(config.factoryAddress);
   });
 
-  it('defaults missing fields to falsy/zero values rather than throwing', async () => {
+  it('returns undefined for missing address fields rather than empty strings', async () => {
     const { GovernorModule } = await import('../governor.js');
     mockSimulate.mockResolvedValueOnce(scvMap({}));
 
@@ -137,7 +137,7 @@ describe('GovernorModule — getConfig()', () => {
     expect(config.feeBps).toBe(0);
     expect(config.minDurationSeconds).toBe(0);
     expect(config.maxRatePerSecond).toBe(0n);
-    expect(config.feeRecipient).toBe('');
-    expect(config.factoryAddress).toBe('');
+    expect(config.feeRecipient).toBeUndefined();
+    expect(config.factoryAddress).toBeUndefined();
   });
 });
