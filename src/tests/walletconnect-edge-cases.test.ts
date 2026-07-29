@@ -71,11 +71,11 @@ describe('WalletConnectAdapter edge cases', () => {
       // Simulates: new WalletConnectAdapter({ chainId: someReactState })
       // where someReactState is undefined before an async load completes.
       // The ?? fallback converts undefined → 'stellar:pubnet', so no crash.
-      expect(() => new WalletConnectAdapter({ chainId: undefined } as any)).not.toThrow();
+      expect(() => new WalletConnectAdapter({ chainId: undefined })).not.toThrow();
     });
 
     it('should default to stellar:pubnet when chainId is undefined', () => {
-      const adapter = new WalletConnectAdapter({ chainId: undefined } as any);
+      const adapter = new WalletConnectAdapter({ chainId: undefined });
       expect(adapter).toBeInstanceOf(WalletConnectAdapter);
     });
 
