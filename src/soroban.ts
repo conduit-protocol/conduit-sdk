@@ -17,6 +17,37 @@ import type { Network } from './types/index.js';
 import type { Signer } from './signer.js';
 import { RateLimitError } from './errors.js';
 
+// ── RPC Server cache ─────────────────────────────────────────────────────────
+// Reusing SorobanRpc.Server instances avoids creating a new HTTP agent per
+// call, which reduces TCP/TLS handshake overhead and GC pressure. This is
+// safe because SorobanRpc.Server is stateless beyond its URL configuration.
+
+const _serverCache = new Map<string, SorobanRpc.Server>();
+
+/**
+ * Returns a cached SorobanRpc.Server for the given URL.
+ * Subsequent calls with the same URL return the same instance,
+ * eliminating per-call HTTP agent creation overhead.
+ */
+export function getServer(rpcUrl: string): SorobanRpc.Server {
+  let server = _serverCache.get(rpcUrl);
+  if (!server) {
+    server = new SorobanRpc.Server(rpcUrl, {
+      allowHttp: rpcUrl.startsWith('http://'),
+    });
+    _serverCache.set(rpcUrl, server);
+  }
+  return server;
+}
+
+/**
+ * Clear the RPC server cache. Useful in tests or when switching
+ * network configurations that should invalidate cached servers.
+ */
+export function clearServerCache(): void {
+  _serverCache.clear();
+}
+
 export const DEFAULT_RPC: Record<Network, string> = {
   mainnet: 'https://soroban-mainnet.stellar.org',
   testnet: 'https://soroban-testnet.stellar.org',
@@ -49,8 +80,8 @@ function normalizePollingOptions(options: ConfirmationPollingOptions = {}): Requ
  * Retries on HTTP 429 and 503 rate limits.
  */
 export function createRpcServer(rpcUrl: string): SorobanRpc.Server {
-  const server = new SorobanRpc.Server(rpcUrl, { allowHttp: rpcUrl.startsWith('http://') });
-  
+  const server = getServer(rpcUrl);
+
   const ASYNC_METHODS = [
     'getAccount',
     'getEvents',

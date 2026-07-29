@@ -46,6 +46,9 @@ export {
   bigintSafeStringify,
 } from './utils.js';
 
+// RPC server lifecycle
+export { getServer, clearServerCache } from './soroban.js';
+
 export {
   formatAddress,
   formatAmount,

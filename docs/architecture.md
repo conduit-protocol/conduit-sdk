@@ -13,7 +13,9 @@ client.ts         — ConduitClient: owns config, instantiates the three modules
   ├─ streams.ts    — StreamsModule:  create/get/withdraw/cancel/pause/resume/topUp/clawback/list/subscribe
   ├─ factory.ts    — FactoryModule:  streamCount/streamAddress/streamsBySender/streamsByRecipient/protocolFeeBps
   └─ governor.ts   — GovernorModule: (config reads — see docs/api.md)
-soroban.ts         — buildContractCallTx/simulateReadOnly + NETWORK_PASSPHRASE/DEFAULT_RPC tables
+soroban.ts         — buildContractCallTx/simulateReadOnly/getServer/clearServerCache + NETWORK_PASSPHRASE/DEFAULT_RPC tables
+                      (getServer maintains a module-level cache of SorobanRpc.Server instances keyed by URL,
+                      eliminating per-call HTTP agent creation; used internally by all RPC-calling code paths)
 events.ts          — subscribeToStream: polls getEvents(), dispatches to typed handlers
 errors.ts          — ConduitError + ErrorCode, mapped from on-chain contract error codes
 utils.ts           — toStroops/fromStroops/calculateRate/streamProgress/withdrawableLocal (pure, no RPC)

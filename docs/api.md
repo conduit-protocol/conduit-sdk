@@ -264,6 +264,43 @@ withdrawableLocal(streamInfo)  // → bigint (client-side estimate, no RPC call)
 
 ---
 
+## RPC Server Lifecycle
+
+The SDK maintains an internal cache of `SorobanRpc.Server` instances keyed by URL. Reusing server
+instances avoids creating new HTTP agents on every RPC call, which reduces TCP/TLS handshake
+overhead, lowers GC pressure, and improves throughput — particularly for operations like
+`client.streams.list()` that issue multiple RPC calls in quick succession.
+
+### `getServer(rpcUrl)`
+
+Returns a cached `SorobanRpc.Server` for the given URL. Subsequent calls with the same URL
+return the same instance. This is the recommended way to obtain an RPC server when calling
+low-level Soroban helpers directly.
+
+```typescript
+import { getServer } from '@conduit-protocol/sdk';
+
+const server = getServer('https://soroban-mainnet.stellar.org');
+```
+
+### `clearServerCache()`
+
+Clears the internal server cache. Useful in test suites between test cases that switch
+network configurations, or when you need to force a fresh server instance.
+
+```typescript
+import { clearServerCache } from '@conduit-protocol/sdk';
+
+clearServerCache();
+```
+
+> **Internal usage:** All SDK functions that interact with the Soroban RPC (`buildContractCallTx`,
+> `simulateReadOnly`, `invokeContract`, `StreamsModule`, `subscribeToStream`, etc.) use
+> `getServer` internally. You do not need to call it yourself unless you are using the low-level
+> Soroban helpers directly.
+
+---
+
 ## Fluent Builder API
 
 The SDK provides `StreamBuilder` and `ConduitBatcher` to construct and execute stream operations fluently and in batches.
