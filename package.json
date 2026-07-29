@@ -33,6 +33,7 @@
     "prepublishOnly": "npm run build",
     "dev": "tsc -p tsconfig.build.json --watch",
     "test": "vitest run",
+    "test:cli": "npm --prefix create-streamfi-app test",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext .ts"

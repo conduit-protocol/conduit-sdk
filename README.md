@@ -2,6 +2,16 @@
 
 TypeScript client library for the Conduit streaming payments protocol. Integrate per-second token streams into any application on Stellar.
 
+## Create a StreamFi app
+
+Use the included CLI package to start a Next.js project configured for Stellar testnet:
+
+```bash
+npx create-streamfi-app my-streamfi-app
+```
+
+It clones a Next.js starter, installs `@streamfi/sdk`, and writes testnet RPC settings to `.env.local`. See [create-streamfi-app/README.md](create-streamfi-app/README.md) for options.
+
 ```bash
 npm install @conduit-protocol/sdk
 ```
