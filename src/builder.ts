@@ -254,11 +254,16 @@ export class StreamBuilder {
       }
 
       throw new Error(
-        `StreamBuilder network payload submission failed after ${maxRetries} retries without payload drop: ${
+        `StreamBuilder network payload submission failed after ${maxRetries} retries: ${
           lastError instanceof Error ? lastError.message : String(lastError)
         }`
       );
     } finally {
+      // Remove payload from queue on both success and final failure
+      const index = this.pendingQueue.indexOf(payload as unknown as Record<string, unknown>);
+      if (index !== -1) {
+        this.pendingQueue.splice(index, 1);
+      }
       this._semaphore.release();
     }
   }
@@ -461,10 +466,10 @@ export interface BatchExecuteAsyncOptions {
 }
 
 export class ConduitBatcher {
-  private static activeCallbacks: Set<() => void> = new Set();
-  private static isDestroyed = false;
-  private static batchQueue: PendingBatch[] = [];
-  private static processingBatch = false;
+  private activeCallbacks: Set<() => void> = new Set();
+  private isDestroyed = false;
+  private batchQueue: PendingBatch[] = [];
+  private processingBatch = false;
 
   /**
    * Bundle multiple stream operations into a single transaction.
@@ -477,11 +482,11 @@ export class ConduitBatcher {
    * Invalid payloads return `{ success: false, errors: [...] }` rather
    * than throwing. Only a destroyed batcher causes a throw.
    */
-  static execute(
+  execute(
     streams: Record<string, unknown>[],
     options?: BatchExecuteOptions,
   ): BatchResult {
-    if (ConduitBatcher.isDestroyed) {
+    if (this.isDestroyed) {
       throw new Error('ConduitBatcher has been destroyed');
     }
 
@@ -532,11 +537,11 @@ export class ConduitBatcher {
    * Asynchronously execute a batch with lifecycle tracking.
    * Ensures pending callbacks are tracked and can be cleaned up on teardown.
    */
-  static async executeAsync(
+  async executeAsync(
     operations: BatchOperation[],
     signalOrOptions?: AbortSignal | BatchExecuteAsyncOptions,
   ): Promise<BatchResult> {
-    if (ConduitBatcher.isDestroyed) {
+    if (this.isDestroyed) {
       throw new Error('ConduitBatcher has been destroyed');
     }
 
@@ -555,27 +560,27 @@ export class ConduitBatcher {
 
     return new Promise<BatchResult>((resolve) => {
       const entry: PendingBatch = { operations, signal, context, resolve };
-      ConduitBatcher.batchQueue.push(entry);
+      this.batchQueue.push(entry);
 
       const cleanup = () => {
-        ConduitBatcher.activeCallbacks.delete(cleanup);
+        this.activeCallbacks.delete(cleanup);
       };
-      ConduitBatcher.activeCallbacks.add(cleanup);
+      this.activeCallbacks.add(cleanup);
 
-      if (!ConduitBatcher.processingBatch) {
-        ConduitBatcher.processQueue();
+      if (!this.processingBatch) {
+        this.processQueue();
       }
 
       cleanup();
     });
   }
 
-  private static async processQueue(): Promise<void> {
-    if (ConduitBatcher.processingBatch || ConduitBatcher.isDestroyed) return;
-    ConduitBatcher.processingBatch = true;
+  private async processQueue(): Promise<void> {
+    if (this.processingBatch || this.isDestroyed) return;
+    this.processingBatch = true;
 
-    while (ConduitBatcher.batchQueue.length > 0 && !ConduitBatcher.isDestroyed) {
-      const entry = ConduitBatcher.batchQueue.shift();
+    while (this.batchQueue.length > 0 && !this.isDestroyed) {
+      const entry = this.batchQueue.shift();
       if (!entry) continue;
 
       const { operations: ops, signal, context, resolve } = entry;
@@ -641,44 +646,44 @@ export class ConduitBatcher {
       }
     }
 
-    ConduitBatcher.processingBatch = false;
+    this.processingBatch = false;
   }
 
   /**
    * Clean up all pending callbacks and reset state.
    * Does NOT reset the destroyed flag — use destroy() for permanent teardown.
    */
-  static cleanup(): void {
-    ConduitBatcher.processingBatch = false;
+  cleanup(): void {
+    this.processingBatch = false;
 
-    const oldQueue = ConduitBatcher.batchQueue;
-    ConduitBatcher.batchQueue = [];
+    const oldQueue = this.batchQueue;
+    this.batchQueue = [];
 
     oldQueue.forEach((entry) => {
       entry.resolve(toFailure(['ConduitBatcher cleaned up']));
     });
 
-    for (const cb of ConduitBatcher.activeCallbacks) {
+    for (const cb of this.activeCallbacks) {
       cb();
     }
-    ConduitBatcher.activeCallbacks.clear();
+    this.activeCallbacks.clear();
   }
 
   /**
    * Permanently destroy the batcher. All pending operations are rejected
    * and subsequent calls to execute/executeAsync will throw.
    */
-  static destroy(): void {
-    ConduitBatcher.isDestroyed = true;
-    ConduitBatcher.cleanup();
+  destroy(): void {
+    this.isDestroyed = true;
+    this.cleanup();
   }
 
   /**
    * Full reset: clears destroyed flag and cleans up pending operations.
    * Allows the batcher to be reused after destroy.
    */
-  static reset(): void {
-    ConduitBatcher.isDestroyed = false;
-    ConduitBatcher.cleanup();
+  reset(): void {
+    this.isDestroyed = false;
+    this.cleanup();
   }
 }

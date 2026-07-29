@@ -191,6 +191,8 @@ export class WalletConnectAdapter implements WalletAdapter {
 
   /**
    * Sign a transaction using WalletConnect v2 RPC call.
+   *
+   * @throws {Error} if networkPassphrase is not provided in opts
    */
   async signTransaction(
     tx: Transaction | string,
@@ -199,6 +201,13 @@ export class WalletConnectAdapter implements WalletAdapter {
     const pubKey = await this.getPublicKey();
     const xdrString = typeof tx === 'string' ? tx : tx.toXDR();
     const passphrase = opts?.networkPassphrase;
+
+    if (!passphrase) {
+      throw new Error(
+        'networkPassphrase is required for signTransaction. ' +
+        'Pass it via opts.networkPassphrase or configure it at adapter construction time.'
+      );
+    }
 
     if (!this.client || typeof this.client.request !== 'function') {
       throw new Error('WalletConnect SignClient request handler is not available.');
@@ -236,7 +245,7 @@ export class WalletConnectAdapter implements WalletAdapter {
       return signedXdr;
     }
 
-    return new Transaction(signedXdr, passphrase ?? '');
+    return new Transaction(signedXdr, passphrase);
   }
 
   /**
