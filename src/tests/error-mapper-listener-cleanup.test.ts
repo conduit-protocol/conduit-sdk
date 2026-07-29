@@ -88,6 +88,19 @@ describe('ErrorMapper — listener cleanup (#81)', () => {
     expect(onError).toHaveBeenCalledTimes(1);
   });
 
+  it('does not allow attach to revive a disposed mapper', () => {
+    const onError = vi.fn();
+    const mapper = new ErrorMapper(relayer, onError);
+
+    mapper.attach();
+    mapper.dispose();
+
+    expect(() => mapper.attach()).toThrow(
+      /ErrorMapper has been disposed and cannot be re-attached/,
+    );
+    expect((relayer as any).handlers.size).toBe(0);
+  });
+
   it('ignores null/malformed payloads instead of throwing or forwarding them', async () => {
     const onError = vi.fn();
     const mapper = new ErrorMapper(relayer, onError);

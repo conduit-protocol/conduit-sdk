@@ -31,10 +31,13 @@ export class ErrorMapper {
 
   /** Registers one relayer listener per error message type. Safe to call more than once. */
   attach(): void {
+    if (this.isDisposed) {
+      throw new Error('ErrorMapper has been disposed and cannot be re-attached');
+    }
+
     // Re-attaching without detaching first would register a second set of
     // listeners on top of the first, leaking the originals. Guard against it.
     this.detach();
-    this.isDisposed = false;
 
     for (const type of Object.keys(ERROR_MESSAGE_TYPES)) {
       const handler: MessageHandler = (msg) => this.handleMessage(type, msg);
