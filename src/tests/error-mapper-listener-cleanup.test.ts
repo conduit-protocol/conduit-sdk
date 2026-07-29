@@ -116,4 +116,14 @@ describe('ErrorMapper — listener cleanup (#81)', () => {
     expect(err.contract).toBe('stream');
     expect(err.code).toBe(6);
   });
+
+  it('throws an error when attach() is called on a disposed ErrorMapper instance', async () => {
+    const onError = vi.fn();
+    const mapper = new ErrorMapper(relayer, onError);
+    mapper.attach();
+    mapper.dispose();
+
+    expect(() => mapper.attach()).toThrow('Cannot attach a disposed ErrorMapper');
+  });
 });
+

@@ -29,18 +29,22 @@ export class ErrorMapper {
     this.onError = onError;
   }
 
-  /** Registers one relayer listener per error message type. Safe to call more than once. */
+  /** Registers one relayer listener per error message type. Safe to call more than once on active instances. Throws if disposed. */
   attach(): void {
+    if (this.isDisposed) {
+      throw new Error('Cannot attach a disposed ErrorMapper');
+    }
+
     // Re-attaching without detaching first would register a second set of
     // listeners on top of the first, leaking the originals. Guard against it.
     this.detach();
-    this.isDisposed = false;
 
     for (const type of Object.keys(ERROR_MESSAGE_TYPES)) {
       const handler: MessageHandler = (msg) => this.handleMessage(type, msg);
       this.unsubscribers.push(this.relayer.on(type, handler));
     }
   }
+
 
   private handleMessage(type: string, msg: WebSocketMessage): void {
     // Boundary check: bail before touching a disposed mapper or a
