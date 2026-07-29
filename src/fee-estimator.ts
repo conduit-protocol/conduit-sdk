@@ -1,20 +1,43 @@
+export interface FeeEstimatorOptions {
+  /**
+   * Minimum interval in milliseconds between network fetches.
+   * Within this window, `estimateFee` serves the cached `baseFee`
+   * instead of calling `networkFetcher` again. Default: no interval (every call fetches).
+   */
+  minRefetchIntervalMs?: number;
+}
+
 export class FeeEstimator {
   private baseFee: number;
   private isEstimating: boolean = false;
   private currentPromise: Promise<number> | null = null;
-  
-  constructor(initialFee: number = 100) {
+  private lastFetchTimestamp: number = 0;
+  private readonly minRefetchIntervalMs: number;
+
+  constructor(initialFee: number = 100, options?: FeeEstimatorOptions) {
     this.baseFee = initialFee;
+    this.minRefetchIntervalMs = options?.minRefetchIntervalMs ?? 0;
   }
 
   /**
    * Safely estimates the fee by fetching it asynchronously.
    * Utilizes an atomic state transition / locking mechanism to prevent race conditions 
    * when multiple async hooks fire simultaneously.
+   *
+   * If `minRefetchIntervalMs` was configured, returns the cached `baseFee` when
+   * called within that window after the last successful fetch.
    */
   async estimateFee(networkFetcher: () => Promise<number>): Promise<number> {
     if (this.currentPromise) {
       return this.currentPromise;
+    }
+
+    // Return cached fee if within the minimum re-fetch interval
+    if (this.minRefetchIntervalMs > 0) {
+      const elapsed = Date.now() - this.lastFetchTimestamp;
+      if (elapsed < this.minRefetchIntervalMs) {
+        return this.baseFee;
+      }
     }
 
     this.currentPromise = (async () => {
@@ -29,6 +52,7 @@ export class FeeEstimator {
         
         // Round to 7 decimal places for precision handling
         this.baseFee = Math.round(rawFee * 10000000) / 10000000;
+        this.lastFetchTimestamp = Date.now();
         return this.baseFee;
       } catch (error) {
         // Fallback sequence: return the last known base fee
