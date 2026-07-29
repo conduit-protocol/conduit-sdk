@@ -4,14 +4,22 @@ import { WebSocketRelayer } from '../relayer/WebSocketRelayer.js';
 function createMockWs(): { mock: any; onmessage: () => Function | null } {
   let onmessage: Function | null = null;
   let onopen: Function | null = null;
+  let onclose: Function | null = null;
   const mock = {
     readyState: 1,
     send: vi.fn(),
-    close: vi.fn(),
+    close: vi.fn(() => {
+      mock.readyState = 3;
+      setTimeout(() => {
+        if (onclose) onclose();
+      }, 0);
+    }),
     set onmessage(fn: any) { onmessage = fn; },
     get onmessage() { return onmessage; },
     set onopen(fn: any) { onopen = fn; if (fn) setTimeout(fn, 0); },
     get onopen() { return onopen; },
+    set onclose(fn: any) { onclose = fn; },
+    get onclose() { return onclose; },
   };
   return { mock, onmessage: () => onmessage };
 }
@@ -25,7 +33,7 @@ describe('WebSocketRelayer — High-Concurrency Stress Tests', () => {
     const created = createMockWs();
     mockWs = created.mock;
     getOnmessage = created.onmessage;
-    (global as any).WebSocket = vi.fn(() => mockWs) as any;
+    (global as any).WebSocket = vi.fn(function () { return mockWs; }) as any;
     relayer = new WebSocketRelayer('ws://localhost:8080', {
       maxReconnectAttempts: 2,
       reconnectDelayMs: 10,
@@ -76,7 +84,7 @@ describe('WebSocketRelayer — High-Concurrency Stress Tests', () => {
       }
     }
 
-    (global as any).WebSocket = vi.fn(() => new ErroringWebSocket()) as any;
+    (global as any).WebSocket = vi.fn(function () { return new ErroringWebSocket(); }) as any;
     const failingRelayer = new WebSocketRelayer('ws://localhost:65535', {
       maxReconnectAttempts: 0,
       reconnectDelayMs: 1,
@@ -173,6 +181,21 @@ describe('WebSocketRelayer — High-Concurrency Stress Tests', () => {
     }
   });
 
+  it('does not reconnect after an intentional disconnect close event', async () => {
+    await relayer.connect();
+    expect((global as any).WebSocket).toHaveBeenCalledTimes(1);
+
+    relayer.disconnect();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect((global as any).WebSocket).toHaveBeenCalledTimes(1);
+    expect(relayer.state.connected).toBe(false);
+    expect(relayer.state.reconnecting).toBe(false);
+
+    await relayer.connect();
+    expect((global as any).WebSocket).toHaveBeenCalledTimes(2);
+  });
+
   it('delivers messages to the correct handler based on type', async () => {
     const priceHandler = vi.fn();
     const tradeHandler = vi.fn();
@@ -249,5 +272,28 @@ describe('WebSocketRelayer — High-Concurrency Stress Tests', () => {
     relayer.send({ type: 'test', payload: {} }).catch(() => {});
 
     expect(relayer.state.pendingCount).toBe(3);
+  });
+
+  it('notifies subscribers when connection state changes', async () => {
+    const handler = vi.fn();
+    const unsubscribe = relayer.onStateChange(handler);
+
+    await relayer.connect();
+    relayer.disconnect();
+
+    expect(handler.mock.calls.map(([transition]) => transition)).toEqual([
+      'connecting',
+      'connected',
+      'disconnected',
+    ]);
+    expect(handler.mock.calls[1]![1]).toMatchObject({
+      connected: true,
+      destroyed: false,
+    });
+
+    unsubscribe();
+    relayer.destroy();
+
+    expect(handler).toHaveBeenCalledTimes(3);
   });
 });

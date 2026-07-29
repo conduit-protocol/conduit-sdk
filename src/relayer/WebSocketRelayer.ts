@@ -5,6 +5,7 @@ export interface WebSocketMessage {
 }
 
 export type MessageHandler = (msg: WebSocketMessage) => Promise<void> | void;
+export type StateChangeHandler = (transition: RelayerStateTransition, state: RelayerState) => void;
 
 export interface RelayerState {
   connected: boolean;
@@ -15,23 +16,35 @@ export interface RelayerState {
 
 export type RelayerStateTransition = 'connecting' | 'connected' | 'disconnected' | 'reconnecting' | 'destroyed';
 
+export interface WebSocketRelayerOptions {
+  maxReconnectAttempts?: number;
+  reconnectDelayMs?: number;
+  onStateChange?: StateChangeHandler;
+}
+
 export class WebSocketRelayer {
   private url: string;
   private ws: WebSocket | null = null;
   private handlers: Map<string, Set<MessageHandler>> = new Map();
+  private stateChangeHandlers: Set<StateChangeHandler> = new Set();
   private isDestroyed = false;
   private isLocked = false;
   private lockQueue: Array<() => void> = [];
   private connectPromise: Promise<void> | null = null;
   private reconnectAttempts = 0;
+  private reconnectEnabled = true;
   private maxReconnectAttempts: number;
   private reconnectDelayMs: number;
   private pendingMessages: WebSocketMessage[] = [];
+  private stateTransition: RelayerStateTransition = 'disconnected';
 
-  constructor(url: string, options?: { maxReconnectAttempts?: number; reconnectDelayMs?: number }) {
+  constructor(url: string, options?: WebSocketRelayerOptions) {
     this.url = url;
     this.maxReconnectAttempts = options?.maxReconnectAttempts ?? 5;
     this.reconnectDelayMs = options?.reconnectDelayMs ?? 1000;
+    if (options?.onStateChange) {
+      this.stateChangeHandlers.add(options.onStateChange);
+    }
   }
 
   get state(): RelayerState {
@@ -62,6 +75,20 @@ export class WebSocketRelayer {
     }
   }
 
+  private emitStateChange(transition: RelayerStateTransition): void {
+    if (this.stateTransition === transition) return;
+
+    this.stateTransition = transition;
+    const state = this.state;
+    for (const handler of this.stateChangeHandlers) {
+      try {
+        handler(transition, state);
+      } catch (err) {
+        console.warn('[WebSocketRelayer] state change handler error:', err);
+      }
+    }
+  }
+
   async connect(): Promise<void> {
     if (this.isDestroyed) {
       throw new Error('WebSocketRelayer has been destroyed');
@@ -76,6 +103,24 @@ export class WebSocketRelayer {
         this.releaseLock();
       }
     })());
+    this.reconnectEnabled = true;
+    if (this.connectPromise) {
+      return this.connectPromise;
+    }
+
+    await this.acquireLock();
+    try {
+      if (this.ws && this.ws.readyState === 1) {
+        return;
+      }
+
+      this.emitStateChange('connecting');
+      this.connectPromise = this.establishConnection();
+      await this.connectPromise;
+    } finally {
+      this.releaseLock();
+      this.connectPromise = null;
+    }
   }
 
   private wsCtor(): typeof WebSocket | null {
@@ -91,6 +136,7 @@ export class WebSocketRelayer {
   private async establishConnection(): Promise<void> {
     const WebSocketCtor = this.wsCtor();
     if (!WebSocketCtor) {
+      this.emitStateChange('disconnected');
       return;
     }
 
@@ -115,6 +161,7 @@ export class WebSocketRelayer {
           settled = true;
           this.reconnectAttempts = 0;
           this.flushPendingMessages();
+          this.emitStateChange('connected');
           resolve();
         };
 
@@ -129,6 +176,8 @@ export class WebSocketRelayer {
             reject(new Error(`WebSocket connection closed before opening: ${this.url}`));
           }
           if (!settled && !this.isDestroyed) {
+          this.emitStateChange('disconnected');
+          if (!this.isDestroyed && this.reconnectEnabled) {
             this.attemptReconnect();
           }
         };
@@ -185,6 +234,7 @@ export class WebSocketRelayer {
   private shouldAttemptReconnect(): boolean {
     return (
       !this.isDestroyed &&
+      this.reconnectEnabled &&
       this.reconnectAttempts < this.maxReconnectAttempts &&
       (!this.ws || this.ws.readyState !== 1)
     );
@@ -206,6 +256,7 @@ export class WebSocketRelayer {
       if (!this.shouldAttemptReconnect()) return;
 
       this.reconnectAttempts++;
+      this.emitStateChange('reconnecting');
       await new Promise((r) => setTimeout(r, this.reconnectDelayMs * this.reconnectAttempts));
       if (this.isDestroyed) return;
 
@@ -231,6 +282,14 @@ export class WebSocketRelayer {
           this.handlers.delete(type);
         }
       }
+    };
+  }
+
+  onStateChange(handler: StateChangeHandler): () => void {
+    this.stateChangeHandlers.add(handler);
+
+    return () => {
+      this.stateChangeHandlers.delete(handler);
     };
   }
 
@@ -270,7 +329,9 @@ export class WebSocketRelayer {
   }
 
   disconnect(): void {
+    this.reconnectEnabled = false;
     this.connectPromise = null;
+    this.reconnectAttempts = 0;
 
     if (this.ws) {
       try {
@@ -280,10 +341,12 @@ export class WebSocketRelayer {
       }
       this.ws = null;
     }
+    this.emitStateChange('disconnected');
   }
 
   destroy(): void {
     this.isDestroyed = true;
+    this.reconnectEnabled = false;
     this.connectPromise = null;
     this.pendingMessages = [];
     this.reconnectAttempts = this.maxReconnectAttempts;
@@ -300,7 +363,9 @@ export class WebSocketRelayer {
       this.ws = null;
     }
 
+    this.emitStateChange('destroyed');
     this.handlers.clear();
+    this.stateChangeHandlers.clear();
     this.lockQueue = [];
     this.isLocked = false;
   }

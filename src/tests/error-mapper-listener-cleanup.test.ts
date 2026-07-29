@@ -27,7 +27,7 @@ describe('ErrorMapper — listener cleanup (#81)', () => {
     const created = createMockWs();
     mockWs = created.mock;
     getOnmessage = created.onmessage;
-    (global as any).WebSocket = vi.fn(() => mockWs) as any;
+    (global as any).WebSocket = vi.fn(function () { return mockWs; }) as any;
     relayer = new WebSocketRelayer('ws://localhost:8080');
   });
 

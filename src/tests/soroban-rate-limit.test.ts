@@ -1,10 +1,19 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { RateLimitError } from '../errors.js';
 
-const mockSimulateTransaction = vi.fn();
-const mockGetAccount = vi.fn();
-const mockSendTransaction = vi.fn();
-const mockGetTransaction = vi.fn();
+const {
+  mockSimulateTransaction,
+  mockGetAccount,
+  mockSendTransaction,
+  mockGetTransaction,
+  mockAssembleTransaction,
+} = vi.hoisted(() => ({
+  mockSimulateTransaction: vi.fn(),
+  mockGetAccount: vi.fn(),
+  mockSendTransaction: vi.fn(),
+  mockGetTransaction: vi.fn(),
+  mockAssembleTransaction: vi.fn(),
+}));
 
 vi.mock('@stellar/stellar-sdk', async () => {
   const actual = await vi.importActual('@stellar/stellar-sdk');
@@ -21,13 +30,26 @@ vi.mock('@stellar/stellar-sdk', async () => {
         };
       }),
       Api: (actual as any).SorobanRpc.Api,
-      assembleTransaction: (actual as any).SorobanRpc.assembleTransaction,
+      assembleTransaction: mockAssembleTransaction,
     },
   };
 });
 
 
-import { simulateReadOnly } from '../soroban.js';
+import { invokeContract, simulateReadOnly } from '../soroban.js';
+
+beforeEach(() => {
+  vi.useFakeTimers();
+  mockSimulateTransaction.mockReset();
+  mockGetAccount.mockReset();
+  mockSendTransaction.mockReset();
+  mockGetTransaction.mockReset();
+  mockAssembleTransaction.mockReset().mockReturnValue({ build: () => ({ sign: vi.fn() }) });
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe('soroban.ts rate limit handling', () => {
   it('converts a 429 thrown by simulateTransaction into a RateLimitError', async () => {
@@ -48,5 +70,31 @@ describe('soroban.ts rate limit handling', () => {
     await expect(
       simulateReadOnly('http://localhost:8000', 'passphrase', {} as any)
     ).rejects.toThrow('ECONNREFUSED');
+  });
+
+  it('uses custom polling interval and attempts in invokeContract()', async () => {
+    const signer = { publicKey: () => 'GTEST', sign: vi.fn() };
+    mockSimulateTransaction.mockResolvedValue({ result: { retval: {} }, transactionData: {} });
+    mockSendTransaction.mockResolvedValue({ status: 'PENDING', hash: 'abc123' });
+    mockGetTransaction.mockResolvedValue({ status: 'NOT_FOUND' });
+
+    const promise = invokeContract(
+      'http://localhost:8000',
+      'passphrase',
+      signer as any,
+      {} as any,
+      { pollIntervalMs: 200, maxAttempts: 2 },
+    );
+    promise.catch(() => {});
+
+    await vi.advanceTimersByTimeAsync(199);
+    expect(mockGetTransaction).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(mockGetTransaction).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(200);
+    await expect(promise).rejects.toThrow('Transaction timed out: abc123');
+    expect(mockGetTransaction).toHaveBeenCalledTimes(2);
   });
 });
