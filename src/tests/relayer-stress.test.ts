@@ -4,14 +4,22 @@ import { WebSocketRelayer } from '../relayer/WebSocketRelayer.js';
 function createMockWs(): { mock: any; onmessage: () => Function | null } {
   let onmessage: Function | null = null;
   let onopen: Function | null = null;
+  let onclose: Function | null = null;
   const mock = {
     readyState: 1,
     send: vi.fn(),
-    close: vi.fn(),
+    close: vi.fn(() => {
+      mock.readyState = 3;
+      setTimeout(() => {
+        if (onclose) onclose();
+      }, 0);
+    }),
     set onmessage(fn: any) { onmessage = fn; },
     get onmessage() { return onmessage; },
     set onopen(fn: any) { onopen = fn; if (fn) setTimeout(fn, 0); },
     get onopen() { return onopen; },
+    set onclose(fn: any) { onclose = fn; },
+    get onclose() { return onclose; },
   };
   return { mock, onmessage: () => onmessage };
 }
@@ -171,6 +179,21 @@ describe('WebSocketRelayer — High-Concurrency Stress Tests', () => {
       r.connect().catch(() => {});
       r.destroy();
     }
+  });
+
+  it('does not reconnect after an intentional disconnect close event', async () => {
+    await relayer.connect();
+    expect((global as any).WebSocket).toHaveBeenCalledTimes(1);
+
+    relayer.disconnect();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect((global as any).WebSocket).toHaveBeenCalledTimes(1);
+    expect(relayer.state.connected).toBe(false);
+    expect(relayer.state.reconnecting).toBe(false);
+
+    await relayer.connect();
+    expect((global as any).WebSocket).toHaveBeenCalledTimes(2);
   });
 
   it('delivers messages to the correct handler based on type', async () => {
