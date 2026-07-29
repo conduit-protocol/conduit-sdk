@@ -64,11 +64,12 @@ const STREAM_ADDR   = StrKey.encodeContract(Buffer.alloc(32, 2));
 const TOKEN         = StrKey.encodeContract(Buffer.alloc(32, 3));
 const RECIPIENT     = Keypair.random().publicKey();
 
-function makeConfig(): ConduitConfig {
+function makeConfig(overrides: Partial<ConduitConfig> = {}): ConduitConfig {
   return {
     network:        'testnet',
     factoryAddress: FACTORY_ADDR,
     keypair:        Keypair.random(),
+    ...overrides,
   };
 }
 
@@ -236,6 +237,35 @@ describe('StreamsModule.create() — success path', () => {
       depositAmount:   '1000',
       durationSeconds: 3600,
     }))).rejects.toBeInstanceOf(RateLimitError);
+  });
+
+  it('uses configured confirmation polling interval and attempts', async () => {
+    mockSimulate.mockResolvedValue(simSuccess(u64Scv(1n)));
+    mockGetTransaction.mockResolvedValue({ status: 'NOT_FOUND' });
+
+    const { StreamsModule } = await import('../streams.js');
+    const sdk = new StreamsModule(makeConfig({
+      confirmationPollIntervalMs: 250,
+      confirmationMaxAttempts: 2,
+    }));
+
+    const promise = sdk.create({
+      recipient:       RECIPIENT,
+      token:           TOKEN,
+      depositAmount:   '1000',
+      durationSeconds: 3600,
+    });
+    promise.catch(() => {});
+
+    await vi.advanceTimersByTimeAsync(249);
+    expect(mockGetTransaction).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(mockGetTransaction).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(250);
+    await expect(promise).rejects.toThrow('Transaction timed out: deadbeef');
+    expect(mockGetTransaction).toHaveBeenCalledTimes(2);
   });
 });
 

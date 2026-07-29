@@ -29,6 +29,21 @@ export const NETWORK_PASSPHRASE: Record<Network, string> = {
   local:   Networks.STANDALONE,
 };
 
+export interface ConfirmationPollingOptions {
+  pollIntervalMs?: number;
+  maxAttempts?: number;
+}
+
+export const DEFAULT_CONFIRMATION_POLL_INTERVAL_MS = 1000;
+export const DEFAULT_CONFIRMATION_MAX_ATTEMPTS = 30;
+
+function normalizePollingOptions(options: ConfirmationPollingOptions = {}): Required<ConfirmationPollingOptions> {
+  return {
+    pollIntervalMs: options.pollIntervalMs ?? DEFAULT_CONFIRMATION_POLL_INTERVAL_MS,
+    maxAttempts: options.maxAttempts ?? DEFAULT_CONFIRMATION_MAX_ATTEMPTS,
+  };
+}
+
 /**
  * Build a contract-call transaction for simulate or submit.
  *
@@ -72,8 +87,10 @@ export async function invokeContract(
   passphrase: string,
   signer:     Signer,
   tx:         ReturnType<TransactionBuilder['build']>,
+  pollingOptions: ConfirmationPollingOptions = {},
 ): Promise<string> {
   const server = new SorobanRpc.Server(rpcUrl, { allowHttp: rpcUrl.startsWith('http://') });
+  const polling = normalizePollingOptions(pollingOptions);
 
   // Simulate
   let simResult;
@@ -105,8 +122,8 @@ export async function invokeContract(
 
   // Poll for confirmation
   const hash = sent.hash;
-  for (let i = 0; i < 30; i++) {
-    await sleep(1000);
+  for (let i = 0; i < polling.maxAttempts; i++) {
+    await sleep(polling.pollIntervalMs);
     let status;
     try {
       status = await server.getTransaction(hash);

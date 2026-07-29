@@ -27,6 +27,8 @@ import {
   getTokenDecimals,
   DEFAULT_RPC,
   NETWORK_PASSPHRASE,
+  DEFAULT_CONFIRMATION_MAX_ATTEMPTS,
+  DEFAULT_CONFIRMATION_POLL_INTERVAL_MS,
 } from './soroban.js';
 import { FactoryModule } from './factory.js';
 import { ConduitError, RateLimitError, StreamErrorCode } from './errors.js';
@@ -512,8 +514,10 @@ export class StreamsModule {
       throw new Error(`Transaction rejected: ${JSON.stringify(sent.errorResult)}`);
     }
     const hash = sent.hash;
-    for (let i = 0; i < 30; i++) {
-      await sleep(1000);
+    const maxAttempts = this.config.confirmationMaxAttempts ?? DEFAULT_CONFIRMATION_MAX_ATTEMPTS;
+    const pollIntervalMs = this.config.confirmationPollIntervalMs ?? DEFAULT_CONFIRMATION_POLL_INTERVAL_MS;
+    for (let i = 0; i < maxAttempts; i++) {
+      await sleep(pollIntervalMs);
       let s;
       try {
         s = await server.getTransaction(hash);

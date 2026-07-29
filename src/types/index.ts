@@ -17,6 +17,10 @@ export interface ConduitConfig {
   factoryAddress?: string;
   /** Override deployed DripGovernor contract ID */
   governorAddress?: string;
+  /** Override Soroban confirmation poll interval in ms; default 1000 */
+  confirmationPollIntervalMs?: number;
+  /** Override Soroban confirmation polling attempts; default 30 */
+  confirmationMaxAttempts?: number;
 }
 
 export interface StreamInfo {
