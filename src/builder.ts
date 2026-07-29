@@ -410,7 +410,7 @@ export class ConduitBatcher {
       throw new Error('ConduitBatcher has been destroyed');
     }
 
-const validationErrors = validatePayload(streams);
+    const validationErrors = validatePayload(streams);
     if (validationErrors.length > 0) {
       return {
         success: false,
