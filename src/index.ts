@@ -28,3 +28,9 @@ export {
   withdrawableLocal,
   bigintSafeStringify,
 } from './utils.js';
+
+export {
+  formatAddress,
+  formatAmount,
+  formatTimestamp,
+} from './dashboard/transaction-history.js';

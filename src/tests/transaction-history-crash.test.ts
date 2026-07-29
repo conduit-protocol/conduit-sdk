@@ -33,6 +33,11 @@ import {
   type TransactionHistoryAction,
   type TransactionHistoryState,
 } from '../dashboard/transaction-history.js';
+import {
+  formatAddress as formatAddressFromIndex,
+  formatAmount as formatAmountFromIndex,
+  formatTimestamp as formatTimestampFromIndex,
+} from '../index.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -120,6 +125,18 @@ describe('#136 — initial state is fully populated on first render', () => {
     expect(selectViewStatus(undefined)).toBe('empty');
     expect(selectTotalPages(undefined)).toBe(1);
     expect(selectFilteredTransactions(undefined)).toEqual([]);
+  });
+});
+
+describe('#224 — public transaction-history formatter exports', () => {
+  it('exposes generic formatting helpers from the main SDK entry point', () => {
+    expect(formatAddressFromIndex('GABCDEFGHIJKLMNOP')).toBe(
+      formatAddress('GABCDEFGHIJKLMNOP')
+    );
+    expect(formatAmountFromIndex('12345678')).toBe(formatAmount('12345678'));
+    expect(formatTimestampFromIndex(Date.UTC(2024, 0, 1))).toBe(
+      formatTimestamp(Date.UTC(2024, 0, 1))
+    );
   });
 });
 
