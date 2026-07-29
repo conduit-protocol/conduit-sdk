@@ -8,6 +8,7 @@ import {
   bigintSafeStringify,
   isValidAddress,
 } from '../utils.js';
+import { ZERO_ADDR } from '../constants.js';
 import { Keypair } from '@stellar/stellar-sdk';
 import type { StreamInfo } from '../types/index.js';
 
@@ -269,6 +270,11 @@ describe('bigintSafeStringify', () => {
 // -- isValidAddress -----------------------------------------------------------
 
 describe('isValidAddress', () => {
+  it('keeps the SDK fallback ZERO_ADDR as a valid Stellar public key', () => {
+    expect(ZERO_ADDR).toHaveLength(56);
+    expect(isValidAddress(ZERO_ADDR)).toBe(true);
+  });
+
   it('returns true for a valid ed25519 public key', () => {
     const kp = Keypair.random();
     expect(isValidAddress(kp.publicKey())).toBe(true);
