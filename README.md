@@ -577,6 +577,22 @@ export const conduit = new ConduitClient({
 });
 ```
 
+### Next.js Example
+
+A working Next.js (App Router) example is available at [`examples/nextjs-app/`](./examples/nextjs-app/). It demonstrates:
+
+- Fetching and displaying active streams for a given Stellar address
+- Creating a new stream via a modal form
+- Withdrawing from a stream
+
+```bash
+# From the repo root
+npm install && npm run build
+cd examples/nextjs-app
+cp .env.example .env.local  # then edit .env.local
+npm run dev
+```
+
 ---
 
 ## Development
@@ -628,7 +644,9 @@ conduit-sdk/
 │   ├── create-stream.ts     # End-to-end create example
 │   ├── fluent-builder.ts    # Fluent Builder and batcher example
 │   ├── withdraw.ts          # Recipient withdraw example
-│   └── list-streams.ts      # List all streams for an address
+│   ├── list-streams.ts      # List all streams for an address
+│   ├── dashboard/           # React + Vite + GraphQL dashboard
+│   └── nextjs-app/          # Next.js (App Router) example
 ├── docs/
 │   └── api.md               # Full API reference (generated)
 ├── tsconfig.json
