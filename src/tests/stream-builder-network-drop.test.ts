@@ -14,9 +14,9 @@ describe('StreamBuilder Network Interruption & Payload Queueing Regression Tests
 
   it('queues payload during transient network failures and resolves cleanly when network recovers', async () => {
     const builder = new StreamBuilder()
-      .token('CDLZFC3SYJYDVR72W5SCK8FJL5F5J8F5J8F5J8F5J8F5J8F5J8F5J8')
-      .sender('GAAZI5T63WGLXNJB6KYZIC2OT74E767E2DMB3E2MB3E2MB3E2MB3E2')
-      .recipient('GBRPYHIL2CI3FNQ4BXLFMNDJBAVLVDW6NZH372NZH372NZH372NZH372')
+      .token('CAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQC526')
+      .sender('GAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQDZ7H')
+      .recipient('GABAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEJXA')
       .amount(1000);
 
     let attempts = 0;
@@ -40,9 +40,9 @@ describe('StreamBuilder Network Interruption & Payload Queueing Regression Tests
 
   it('retains pending payload in queue and cleans up timers when submission fails max retries', async () => {
     const builder = new StreamBuilder()
-      .token('CDLZFC3SYJYDVR72W5SCK8FJL5F5J8F5J8F5J8F5J8F5J8F5J8F5J8')
-      .sender('GAAZI5T63WGLXNJB6KYZIC2OT74E767E2DMB3E2MB3E2MB3E2MB3E2')
-      .recipient('GBRPYHIL2CI3FNQ4BXLFMNDJBAVLVDW6NZH372NZH372NZH372NZH372')
+      .token('CAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQC526')
+      .sender('GAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQDZ7H')
+      .recipient('GABAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEJXA')
       .amount(500);
 
     const brokenNetworkSubmit = async () => {

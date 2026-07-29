@@ -79,16 +79,16 @@ describe('ConduitBatcher', () => {
   describe('execute — successful batch compilation', () => {
     it('executes a batch of StreamBuilder outputs', () => {
       const stream1 = new StreamBuilder()
-        .token('CD1')
-        .sender('GA1')
-        .recipient('GB1')
+        .token('CAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQC526')
+        .sender('GAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQDZ7H')
+        .recipient('GABAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEJXA')
         .amount(100)
         .build();
 
       const stream2 = new StreamBuilder()
-        .token('CD2')
-        .sender('GA2')
-        .recipient('GB2')
+        .token('CAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQC526')
+        .sender('GAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQDZ7H')
+        .recipient('GABAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEJXA')
         .amount(200)
         .build();
 
@@ -111,7 +111,7 @@ describe('ConduitBatcher', () => {
     });
 
     it('handles a single-item batch', () => {
-      const result = ConduitBatcher.execute([{ token: 'CD1', amount: 100 }]);
+      const result = ConduitBatcher.execute([{ token: 'CAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQC526', amount: 100 }]);
 
       expect(result.success).toBe(true);
       expect(result.operations).toBe(1);
@@ -123,9 +123,9 @@ describe('ConduitBatcher', () => {
     it('accepts payloads with top-level bigint fields', () => {
       const result = ConduitBatcher.execute([
         {
-          token: 'CD...',
-          sender: 'GA...',
-          recipient: 'GB...',
+          token: 'CAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQC526',
+          sender: 'GAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQDZ7H',
+          recipient: 'GABAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEJXA',
           rate: BigInt('9007199254740993'),
           deposit: 50000n,
         },
@@ -170,7 +170,7 @@ describe('ConduitBatcher', () => {
     it('accepts payloads containing symbols without throwing', () => {
       const sym = Symbol('test');
       const result = ConduitBatcher.execute([
-        { key: sym as unknown as string, token: 'CD1' },
+        { key: sym as unknown as string, token: 'CAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQC526' },
       ]);
 
       expect(result.success).toBe(true);
@@ -356,7 +356,7 @@ describe('ConduitBatcher', () => {
       ConduitBatcher.destroy();
       ConduitBatcher.reset();
 
-      const result = ConduitBatcher.execute([{ token: 'CD1' }]);
+      const result = ConduitBatcher.execute([{ token: 'CAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQC526' }]);
       expect(result.success).toBe(true);
       expect(result.operations).toBe(1);
     });
