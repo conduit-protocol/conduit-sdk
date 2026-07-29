@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Keypair, StrKey, xdr } from '@stellar/stellar-sdk';
-import { ConduitError } from '../errors.js';
+import { ConduitError, RateLimitError } from '../errors.js';
 import type { ConduitConfig } from '../types/index.js';
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
@@ -203,6 +203,39 @@ describe('StreamsModule.create() — success path', () => {
       depositAmount:   '1000',
       durationSeconds: 3600,
     }))).rejects.toThrow(/returned no value/);
+  });
+
+  it('classifies rate limits thrown while submitting the transaction', async () => {
+    mockSimulate.mockResolvedValue(simSuccess(u64Scv(1n)));
+    mockSend.mockRejectedValue({ response: { status: 429, headers: { 'retry-after': '3' } } });
+
+    const { StreamsModule } = await import('../streams.js');
+    const sdk = new StreamsModule(makeConfig());
+
+    await expect(sdk.create({
+      recipient:       RECIPIENT,
+      token:           TOKEN,
+      depositAmount:   '1000',
+      durationSeconds: 3600,
+    })).rejects.toMatchObject({
+      name: 'RateLimitError',
+      retryAfterMs: 3000,
+    });
+  });
+
+  it('classifies rate limits thrown while polling for confirmation', async () => {
+    mockSimulate.mockResolvedValue(simSuccess(u64Scv(1n)));
+    mockGetTransaction.mockRejectedValue({ code: -32029 });
+
+    const { StreamsModule } = await import('../streams.js');
+    const sdk = new StreamsModule(makeConfig());
+
+    await expect(runThroughFirstPoll(() => sdk.create({
+      recipient:       RECIPIENT,
+      token:           TOKEN,
+      depositAmount:   '1000',
+      durationSeconds: 3600,
+    }))).rejects.toBeInstanceOf(RateLimitError);
   });
 });
 

@@ -29,7 +29,7 @@ import {
   NETWORK_PASSPHRASE,
 } from './soroban.js';
 import { FactoryModule } from './factory.js';
-import { ConduitError, StreamErrorCode } from './errors.js';
+import { ConduitError, RateLimitError, StreamErrorCode } from './errors.js';
 
 // ── Deprecation warnings ─────────────────────────────────────────────────
 
@@ -498,14 +498,24 @@ export class StreamsModule {
     server: SorobanRpc.Server,
     tx: Transaction,
   ): Promise<{ hash: string; returnValue: xdr.ScVal | undefined }> {
-    const sent = await server.sendTransaction(tx);
+    let sent;
+    try {
+      sent = await server.sendTransaction(tx);
+    } catch (err) {
+      throw RateLimitError.fromRpcError(err) ?? err;
+    }
     if (sent.status === 'ERROR') {
       throw new Error(`Transaction rejected: ${JSON.stringify(sent.errorResult)}`);
     }
     const hash = sent.hash;
     for (let i = 0; i < 30; i++) {
       await sleep(1000);
-      const s = await server.getTransaction(hash);
+      let s;
+      try {
+        s = await server.getTransaction(hash);
+      } catch (err) {
+        throw RateLimitError.fromRpcError(err) ?? err;
+      }
       if (s.status === SorobanRpc.Api.GetTransactionStatus.SUCCESS) {
         return { hash, returnValue: s.returnValue };
       }
