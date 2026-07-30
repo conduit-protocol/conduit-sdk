@@ -1,22 +1,48 @@
 import type { StreamInfo } from './types/index.js';
 import { StrKey } from '@stellar/stellar-sdk';
 
+const POW10: bigint[] = [
+  1n, 10n, 100n, 1000n, 10000n, 100000n, 1000000n, 10000000n,
+  100000000n, 1000000000n, 10000000000n, 100000000000n,
+  1000000000000n, 10000000000000n, 100000000000000n,
+  1000000000000000n, 10000000000000000n, 100000000000000000n,
+  1000000000000000000n, 10000000000000000000n,
+];
+
+function pow10(decimals: number): bigint {
+  return decimals < POW10.length ? POW10[decimals]! : BigInt(10 ** decimals);
+}
+
 /** Convert a display amount string to stroops (bigint) */
 export function toStroops(amount: string, decimals = 7): bigint {
-  const [whole = '0', frac = ''] = amount.split('.');
-  const fracPadded = frac.slice(0, decimals + 1).padEnd(decimals + 1, '0');
+  const dotIndex = amount.indexOf('.');
+  const whole = dotIndex === -1 ? amount : amount.slice(0, dotIndex);
+  const frac = dotIndex === -1 ? '' : amount.slice(dotIndex + 1);
+  const fracLen = frac.length;
+  const needed = decimals + 1;
+  let fracPadded: string;
+  if (fracLen >= needed) {
+    fracPadded = frac.slice(0, needed);
+  } else {
+    fracPadded = frac + '0'.repeat(needed - fracLen);
+  }
   const fracValue = BigInt(fracPadded);
-  const roundingDigit = Number(fracPadded[decimals] ?? '0');
+  const roundingDigit = fracPadded.charCodeAt(decimals) - 48;
   const roundedFrac = roundingDigit >= 5 ? fracValue / 10n + 1n : fracValue / 10n;
-  return BigInt(whole) * BigInt(10 ** decimals) + roundedFrac;
+  return BigInt(whole) * pow10(decimals) + roundedFrac;
 }
 
 /** Convert stroops (bigint) to a display amount string */
 export function fromStroops(stroops: bigint, decimals = 7): string {
-  const factor  = BigInt(10 ** decimals);
-  const whole   = stroops / factor;
-  const frac    = (stroops % factor).toString().padStart(decimals, '0');
-  const trimmed = frac.replace(/0+$/, '') || '0';
+  const factor = pow10(decimals);
+  const whole = stroops / factor;
+  const rem = stroops % factor;
+  const frac = rem.toString().padStart(decimals, '0');
+  let end = frac.length;
+  while (end > 1 && frac.charCodeAt(end - 1) === 48) {
+    end--;
+  }
+  const trimmed = frac.slice(0, end);
   return `${whole}.${trimmed}`;
 }
 
@@ -32,8 +58,7 @@ export function calculateRate(depositAmount: string, durationSecs: number, decim
   const divisor = BigInt(durationSecs);
   if (divisor === 0n) return 0n;
   const quotient = stroops / divisor;
-  const remainder = stroops % divisor;
-  // Round to nearest: if remainder >= half the divisor, round up
+  const remainder = stroops - quotient * divisor;
   return remainder * 2n >= divisor ? quotient + 1n : quotient;
 }
 

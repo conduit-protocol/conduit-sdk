@@ -18,7 +18,9 @@ soroban.ts         — buildContractCallTx/simulateReadOnly/getServer/clearServe
                       eliminating per-call HTTP agent creation; used internally by all RPC-calling code paths)
 events.ts          — subscribeToStream: polls getEvents(), dispatches to typed handlers
 errors.ts          — ConduitError + ErrorCode, mapped from on-chain contract error codes
-utils.ts           — toStroops/fromStroops/calculateRate/streamProgress/withdrawableLocal (pure, no RPC)
+utils.ts           — toStroops/fromStroops/calculateRate/streamProgress/withdrawableLocal (pure, no RPC).
+                      Uses a precomputed POW10 lookup table for common decimal values (0–19) to avoid
+                      recomputing BigInt(10 ** decimals) on every call.
 indexer.ts         — GraphQLIndexer: query() + subscribe() (WebSocket, SSE fallback) against the indexer
 dashboard/transaction-history.ts
                    — framework-agnostic reducer + selectors for the Transaction History view
@@ -30,8 +32,6 @@ contracts/*-abi.ts — generated-style ABI/method-name constants per contract
 DEFAULT_RPC[network]`) and hands the same config to `StreamsModule`, `FactoryModule`, and
 `GovernorModule`. Each module is otherwise independent; there's no shared mutable state between
 them beyond that config object.
-
----
 
 ## Call flow (mutating action)
 
@@ -127,6 +127,10 @@ array instead.
 3. **Memoised `_server()` proxy** (`_rpcServerProxy`): `createRpcServer()` constructs a new `Proxy` object on every call even though the underlying `SorobanRpc.Server` is already cached by URL. `StreamsModule` now holds one proxy per instance, avoiding the per-call `Proxy` allocation overhead across all RPC operations.
 
 4. **Parallel `buildBatchTransactions` simulations** (`batch-tx.ts`): The async variant of `buildBatchTransactions` previously simulated each operation sequentially in a `for` loop. Soroban simulations are independent read operations — they do not mutate state and do not depend on each other's outcome — so they are now fanned out with `Promise.all`, reducing wall-clock time for N-operation batches from O(N × RTT) to O(RTT).
+
+5. **Cached caller address** (`_cachedCallerAddr`): `_resolveCallerAddress()` now caches the resolved sender address for the lifetime of the `StreamsModule` instance, invalidated only by `setWallet()`. Avoids a redundant `getPublicKey()` call (which may hit a wallet extension or hardware device) on every read/mutating operation.
+
+6. **Precomputed `POW10` lookup table** (`utils.ts`): `toStroops`, `fromStroops`, `calculateRate`, and `calculateYield` previously recomputed `BigInt(10 ** decimals)` on every call. A lookup table for decimals 0–19 (the realistic range for on-chain token decimals) eliminates that repeated exponentiation.
 
 ---
 

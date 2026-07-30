@@ -263,6 +263,11 @@ withdrawableLocal(streamInfo)  // → bigint (client-side estimate, no RPC call)
 
 `withdrawableLocal` is useful for building live counters without polling the chain on every render tick.
 
+`toStroops`, `fromStroops`, `calculateRate`, and `calculateYield` use a precomputed `POW10`
+lookup table for decimal values 0–19, avoiding repeated `BigInt(10 ** decimals)` computation
+on every call. See [`docs/architecture.md`](./architecture.md#performance) for the full
+write-up of this and the other `StreamsModule` caching optimizations.
+
 ### `bigintSafeStringify(value)`
 
 Recursively converts all `bigint` values in an object or array to their string

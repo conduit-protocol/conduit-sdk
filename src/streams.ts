@@ -90,6 +90,13 @@ export class StreamsModule {
    */
   private _rpcServerProxy: SorobanRpc.Server | null = null;
 
+  /**
+   * Cached caller address, populated on first resolution and invalidated on
+   * setWallet(). Avoids a redundant getPublicKey() call (which may hit a
+   * wallet extension / hardware device) on every read/mutating operation.
+   */
+  private _cachedCallerAddr: string | null = null;
+
   constructor(private readonly config: ConduitConfig) {
     this.rpcUrl     = config.rpcUrl ?? DEFAULT_RPC[config.network];
     this.passphrase = NETWORK_PASSPHRASE[config.network];
@@ -105,9 +112,11 @@ export class StreamsModule {
 
   /**
    * Dynamically set or update the active wallet adapter.
+   * Invalidates the cached caller address so it is re-resolved on next use.
    */
   setWallet(wallet: WalletAdapter): void {
     this.activeWallet = wallet;
+    this._cachedCallerAddr = null;
   }
 
   private _signer(): Signer | null {
@@ -128,15 +137,25 @@ export class StreamsModule {
    * Resolve the caller address, handling both sync and async getPublicKey().
    * Unlike _signerPublicKey(), this can be used when the wallet adapter
    * returns a promise - but it MUST only be called from async contexts.
+   * Results are cached per wallet configuration and invalidated on setWallet().
    */
   private async _resolveCallerAddress(): Promise<string> {
+    if (this._cachedCallerAddr !== null) {
+      return this._cachedCallerAddr;
+    }
+    let addr: string;
     if (this.activeWallet) {
       const pk = await this.activeWallet.getPublicKey();
-      if (pk) return pk;
+      addr = pk ?? ZERO_ADDR;
+    } else if (this.config.signer) {
+      addr = this.config.signer.publicKey();
+    } else if (this.config.keypair) {
+      addr = this.config.keypair.publicKey();
+    } else {
+      addr = ZERO_ADDR;
     }
-    if (this.config.signer) return this.config.signer.publicKey();
-    if (this.config.keypair) return this.config.keypair.publicKey();
-    return ZERO_ADDR;
+    this._cachedCallerAddr = addr;
+    return addr;
   }
 
   /**

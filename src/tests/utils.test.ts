@@ -474,3 +474,64 @@ describe('isValidAddress', () => {
     expect(isValidAddress('not-a-stellar-address')).toBe(false);
   });
 });
+
+// ── POW10 precomputation coverage ──────────────────────────────────────
+
+describe('toStroops with non-default decimals', () => {
+  it('works with decimals=0', () => {
+    expect(toStroops('100', 0)).toBe(100n);
+  });
+
+  it('works with decimals=1', () => {
+    expect(toStroops('1.5', 1)).toBe(15n);
+  });
+
+  it('works with decimals=8 (beyond default 7)', () => {
+    expect(toStroops('1.000000005', 8)).toBe(1000000005n);
+  });
+
+  it('works with decimals=18 (beyond default 7)', () => {
+    expect(toStroops('1.000000000000000001', 18)).toBe(1000000000000000001n);
+  });
+});
+
+describe('fromStroops with non-default decimals', () => {
+  it('works with decimals=0', () => {
+    expect(fromStroops(100n, 0)).toBe('100.0');
+  });
+
+  it('works with decimals=1', () => {
+    expect(fromStroops(15n, 1)).toBe('1.5');
+  });
+
+  it('works with decimals=8', () => {
+    expect(fromStroops(1000000005n, 8)).toBe('1.000000005');
+  });
+});
+
+describe('calculateRate with non-default decimals', () => {
+  it('works with decimals=0', () => {
+    expect(calculateRate('100', 10, 0)).toBe(10n);
+  });
+
+  it('works with decimals=18', () => {
+    const rate = calculateRate('1', 1000, 18);
+    expect(rate).toBeGreaterThan(0n);
+  });
+});
+
+describe('bigintSafeStringify edge cases', () => {
+  it('handles an empty object', () => {
+    expect(bigintSafeStringify({})).toEqual({});
+  });
+
+  it('handles an empty array', () => {
+    expect(bigintSafeStringify([])).toEqual([]);
+  });
+
+  it('handles deeply nested bigint values', () => {
+    const input = { a: { b: { c: { d: 9007199254740993n } } } };
+    const result = bigintSafeStringify(input);
+    expect(result.a.b.c.d).toBe('9007199254740993');
+  });
+});
