@@ -341,6 +341,12 @@ describe('#136 — normalisation of hostile indexer payloads', () => {
     expect(normalizeTransaction(makeRaw({ timestamp: 'not a date' }))?.timestamp).toBe(0);
   });
 
+  it('normalises space-separated indexer timestamps the same way Safari would (#352)', () => {
+    expect(
+      normalizeTransaction(makeRaw({ timestamp: '2024-01-01 00:00:00' }))?.timestamp,
+    ).toBe(Date.parse('2024-01-01T00:00:00.000Z'));
+  });
+
   it('keeps bigint/number amounts as lossless strings', () => {
     expect(normalizeTransaction(makeRaw({ amount: 10n ** 18n }))?.amount).toBe(
       '1000000000000000000',

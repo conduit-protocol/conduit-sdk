@@ -194,15 +194,23 @@ function asString(value: unknown, fallback = ''): string {
   return fallback;
 }
 
+const SPACE_SEPARATED_DATETIME = /^(\d{4}-\d{2}-\d{2})[ ](\d{2}:\d{2}:\d{2}(?:\.\d+)?)$/;
+
+function toIso8601(value: string): string {
+  const match = value.match(SPACE_SEPARATED_DATETIME);
+  return match ? match[1] + 'T' + match[2] + 'Z' : value;
+}
+
 function asTimestamp(value: unknown): number {
   if (typeof value === 'number' && Number.isFinite(value)) {
     // Indexers emit seconds for `createdAt`; normalise to milliseconds.
     return value < 1e12 ? Math.trunc(value) * 1000 : Math.trunc(value);
   }
   if (typeof value === 'string' && value.trim() !== '') {
-    const numeric = Number(value);
+    const trimmed = value.trim();
+    const numeric = Number(trimmed);
     if (Number.isFinite(numeric)) return asTimestamp(numeric);
-    const parsed = Date.parse(value);
+    const parsed = Date.parse(toIso8601(trimmed));
     if (!Number.isNaN(parsed)) return parsed;
   }
   if (value instanceof Date) {
