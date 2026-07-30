@@ -574,3 +574,28 @@ following JSON frame to the rejected client's socket before returning:
 }
 ```
 
+---
+
+## `Module36` (Feature #36)
+
+Stream snapshot diff engine implementing Feature #36. Uses LRU-memoized comparisons to avoid recomputing deltas for repeated identical stream state comparisons; actual speedup is workload-dependent (proportional to cache hit rate).
+
+### Constructor
+
+```typescript
+new Module36(config?: Module36Config)
+```
+
+| Option | Type | Default | Notes |
+|--------|------|---------|-------|
+| `cacheSize` | `number` | `1000` | Max entries in the LRU memoization cache |
+| `enableOptimization` | `boolean` | `true` | Enables LRU-memoized diffing |
+
+### Methods
+
+* `diffSnapshots(previous: StreamSnapshot, current: StreamSnapshot): StreamDiff` — Computes withdrawable/progress deltas and status-change detection between two observations.
+* `diffBatch(pairs: Array<{ previous: StreamSnapshot; current: StreamSnapshot }>): StreamDiff[]` — Diffs many snapshot pairs in one pass.
+* `computeAccrual(ratePerSecond: bigint, fromSec: number, toSec: number): bigint` — Fast BigInt accrual between timestamps.
+* `clearCache(): void` — Clears the LRU cache and performance counters.
+* `getPerformanceMetrics(): Module36Metrics` — Returns `totalDiffs`, `cacheHits`, `cacheMisses`, `averageExecutionTimeMs`, and `measuredSpeedupPercent` (a real measurement derived from this instance's own accumulated hit/miss timings, `null` until both have occurred at least once — not a fixed assumed percentage).
+

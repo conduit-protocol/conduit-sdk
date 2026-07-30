@@ -56,3 +56,11 @@ export {
   formatAmount,
   formatTimestamp,
 } from './dashboard/transaction-history.js';
+
+export { Module36 } from './module36.js';
+export type {
+  Module36Config,
+  StreamSnapshot,
+  StreamDiff,
+  Module36Metrics,
+} from './module36.js';
