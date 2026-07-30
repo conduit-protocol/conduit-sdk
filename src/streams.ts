@@ -2,7 +2,7 @@
  * StreamsModule - all DripStream + DripFactory operations.
  */
 
-import { SorobanRpc, nativeToScVal, xdr, Address, Transaction } from '@stellar/stellar-sdk';
+import { SorobanRpc, nativeToScVal, xdr, Address, Transaction, BASE_FEE } from '@stellar/stellar-sdk';
 import type { Signer } from './signer.js';
 import type {
   ConduitConfig,
@@ -15,6 +15,8 @@ import type {
   Subscription,
   BatchWithdrawItem,
   BatchWithdrawResult,
+  StreamOperation,
+  FeeEstimate,
 } from './types/index.js';
 import type { WalletAdapter } from './adapters/types.js';
 import { KeypairWalletAdapter } from './adapters/keypair.js';
@@ -362,6 +364,100 @@ export class StreamsModule {
       throw new Error(`Transaction ${hash} succeeded but returned no value`);
     }
     return scValToI128(returnValue);
+  }
+
+  /**
+   * Estimate the network fee for a given stream operation by running a
+   * Soroban simulation. Returns the resource fee (CPU/RAM), base fee, and
+   * total estimated fee in stroops.
+   */
+  async estimateFee(operation: StreamOperation): Promise<FeeEstimate> {
+    const callerAddr = await this._getSenderAddress();
+    const server = this._server();
+
+    let tx: Transaction;
+
+    switch (operation.type) {
+      case 'create': {
+        const decimals = await getTokenDecimals(this.rpcUrl, this.passphrase, callerAddr, operation.token);
+        const depositStroops = toStroops(operation.depositAmount, decimals);
+        const rateStroops = operation.ratePerSecond
+          ? BigInt(operation.ratePerSecond)
+          : calculateRate(operation.depositAmount, operation.durationSeconds!, decimals);
+        const start = operation.startTime ?? Math.floor(Date.now() / 1000);
+        const end = operation.durationSeconds ? start + operation.durationSeconds : 0;
+
+        const args = [
+          new Address(callerAddr).toScVal(),
+          new Address(operation.recipient).toScVal(),
+          new Address(operation.token).toScVal(),
+          nativeToScVal(depositStroops, { type: 'i128' }),
+          nativeToScVal(rateStroops, { type: 'i128' }),
+          nativeToScVal(start, { type: 'u64' }),
+          nativeToScVal(end, { type: 'u64' }),
+          boolToScVal(operation.clawbackEnabled ?? false),
+        ];
+
+        tx = await buildContractCallTx(this.rpcUrl, this.passphrase, callerAddr, this.config.factoryAddress ?? '', 'create_stream', args);
+        break;
+      }
+      case 'withdraw': {
+        const addr = await this._resolveAddr(BigInt(operation.streamId));
+        const qty = operation.amount ?? 0n;
+        tx = await buildContractCallTx(this.rpcUrl, this.passphrase, callerAddr, addr, 'withdraw', [
+          nativeToScVal(qty, { type: 'i128' }),
+        ]);
+        break;
+      }
+      case 'cancel': {
+        const addr = await this._resolveAddr(BigInt(operation.streamId));
+        tx = await buildContractCallTx(this.rpcUrl, this.passphrase, callerAddr, addr, 'cancel', []);
+        break;
+      }
+      case 'pause': {
+        const addr = await this._resolveAddr(BigInt(operation.streamId));
+        tx = await buildContractCallTx(this.rpcUrl, this.passphrase, callerAddr, addr, 'pause', []);
+        break;
+      }
+      case 'resume': {
+        const addr = await this._resolveAddr(BigInt(operation.streamId));
+        tx = await buildContractCallTx(this.rpcUrl, this.passphrase, callerAddr, addr, 'resume', []);
+        break;
+      }
+      case 'topUp': {
+        const addr = await this._resolveAddr(BigInt(operation.streamId));
+        tx = await buildContractCallTx(this.rpcUrl, this.passphrase, callerAddr, addr, 'top_up', [
+          nativeToScVal(operation.amount, { type: 'i128' }),
+        ]);
+        break;
+      }
+      case 'clawback': {
+        const addr = await this._resolveAddr(BigInt(operation.streamId));
+        tx = await buildContractCallTx(this.rpcUrl, this.passphrase, callerAddr, addr, 'clawback', []);
+        break;
+      }
+    }
+
+    let simResult;
+    try {
+      simResult = await server.simulateTransaction(tx);
+    } catch (err) {
+      throw RateLimitError.fromRpcError(err) ?? err;
+    }
+
+    if (SorobanRpc.Api.isSimulationError(simResult)) {
+      throw new Error(`Simulation failed: ${simResult.error}`);
+    }
+
+    const resourceFee = Number(simResult.minResourceFee);
+    const cpuInstructions = Number(simResult.cost.cpuInsns);
+
+    return {
+      totalFee: Number(BASE_FEE) + resourceFee,
+      resourceFee,
+      baseFee: Number(BASE_FEE),
+      instructions: cpuInstructions,
+    };
   }
 
   /**
