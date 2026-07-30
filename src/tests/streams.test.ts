@@ -306,47 +306,35 @@ describe('StreamsModule — subscribeAsync()', () => {
 
 describe('StreamsModule — caller address caching', () => {
   it('caches the caller address across multiple calls', async () => {
-    mockStreamAddress.mockResolvedValue(STREAM_ADDR);
-    mockSimulate.mockResolvedValue(simSuccess(xdr.ScVal.scvVoid()));
-    mockGetTransaction.mockResolvedValue(txSuccess());
-
     const { StreamsModule } = await import('../streams.js');
     const sdk = new StreamsModule(makeConfig());
 
-    const addr1 = await sdk._resolveCallerAddress();
-    const addr2 = await sdk._resolveCallerAddress();
+    const addr1 = await (sdk as any)._resolveCallerAddress();
+    const addr2 = await (sdk as any)._resolveCallerAddress();
     expect(addr1).toBe(addr2);
   });
 
   it('invalidates the cached caller address when setWallet is called', async () => {
-    mockStreamAddress.mockResolvedValue(STREAM_ADDR);
-    mockSimulate.mockResolvedValue(simSuccess(xdr.ScVal.scvVoid()));
-    mockGetTransaction.mockResolvedValue(txSuccess());
-
     const { StreamsModule } = await import('../streams.js');
     const sdk = new StreamsModule(makeConfig());
 
-    const addr1 = await sdk._resolveCallerAddress();
+    const addr1 = await (sdk as any)._resolveCallerAddress();
     sdk.setWallet({
       getPublicKey: vi.fn().mockResolvedValue('GNEWADDR123456789012345678901234567890123456789012345678901'),
       signTransaction: vi.fn(),
     } as unknown as import('../adapters/types.js').WalletAdapter);
-    const addr2 = await sdk._resolveCallerAddress();
+    const addr2 = await (sdk as any)._resolveCallerAddress();
     expect(addr1).not.toBe(addr2);
   });
 });
 
 describe('StreamsModule — server caching', () => {
   it('caches the SorobanRpc.Server instance across calls', async () => {
-    mockStreamAddress.mockResolvedValue(STREAM_ADDR);
-    mockSimulate.mockResolvedValue(simSuccess(xdr.ScVal.scvVoid()));
-    mockGetTransaction.mockResolvedValue(txSuccess());
-
     const { StreamsModule } = await import('../streams.js');
     const sdk = new StreamsModule(makeConfig());
 
-    const server1 = sdk._server();
-    const server2 = sdk._server();
+    const server1 = (sdk as any)._server();
+    const server2 = (sdk as any)._server();
     expect(server1).toBe(server2);
   });
 });

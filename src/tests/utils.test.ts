@@ -487,7 +487,7 @@ describe('toStroops with non-default decimals', () => {
   });
 
   it('works with decimals=8 (beyond default 7)', () => {
-    expect(toStroops('1.000000005', 8)).toBe(1000000005n);
+    expect(toStroops('1.00000001', 8)).toBe(100000001n);
   });
 
   it('works with decimals=18 (beyond default 7)', () => {
@@ -505,7 +505,7 @@ describe('fromStroops with non-default decimals', () => {
   });
 
   it('works with decimals=8', () => {
-    expect(fromStroops(1000000005n, 8)).toBe('1.000000005');
+    expect(fromStroops(100000001n, 8)).toBe('1.00000001');
   });
 });
 
