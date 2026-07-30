@@ -83,6 +83,23 @@ describe('NonceManager — Concurrent Nonce Integration Tests', () => {
     m.destroy();
   });
 
+  it('does not deadlock after acquireWithFallback times out on a held lock', async () => {
+    const m = new NonceManager({ startNonce: 0n, maxNonce: 100n });
+
+    const lock1 = await m.acquire();
+    expect(lock1.nonce).toBe(0n);
+
+    await expect(m.acquireWithFallback(20)).rejects.toThrow('timed out');
+
+    lock1.release();
+
+    const lock2 = await m.acquireWithFallback(50);
+    expect(lock2.nonce).toBe(1n);
+    lock2.release();
+
+    m.destroy();
+  });
+
   it('safeAcquire retries on failure', async () => {
     const tiny = new NonceManager({ startNonce: 0n, maxNonce: 1n });
 

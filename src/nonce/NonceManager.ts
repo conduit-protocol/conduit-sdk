@@ -10,11 +10,16 @@ export interface NonceManagerOptions {
 
 const MAX_SAFE_U64 = 18446744073709551615n;
 
+interface QueueEntry {
+  resolve: (value: NonceLock) => void;
+  cancelled: boolean;
+}
+
 export class NonceManager {
   private currentNonce: bigint;
   private maxNonce: bigint;
   private isLocked = false;
-  private lockQueue: Array<(value: NonceLock) => void> = [];
+  private lockQueue: QueueEntry[] = [];
   private acquiredNonces: Set<string> = new Set();
   private isDestroyed = false;
 
@@ -61,9 +66,22 @@ export class NonceManager {
       return this.nextNonce();
     }
 
-    return new Promise<NonceLock>((resolve) => {
-      this.lockQueue.push(resolve);
+    return this.enqueue().promise;
+  }
+
+  /**
+   * Queues a waiter for the lock and returns a handle that can cancel it.
+   * A cancelled waiter is skipped (without consuming a nonce) once it
+   * reaches the front of the queue, so an abandoned caller (e.g. a timed
+   * out `acquireWithFallback`) never leaves the lock permanently held.
+   */
+  private enqueue(): { promise: Promise<NonceLock>; cancel: () => void } {
+    const entry: QueueEntry = { resolve: () => undefined, cancelled: false };
+    const promise = new Promise<NonceLock>((resolve) => {
+      entry.resolve = resolve;
     });
+    this.lockQueue.push(entry);
+    return { promise, cancel: () => { entry.cancelled = true; } };
   }
 
   private nextNonce(): NonceLock {
@@ -86,10 +104,13 @@ export class NonceManager {
   }
 
   private releaseLock(): void {
-    const next = this.lockQueue.shift();
+    let next = this.lockQueue.shift();
+    while (next && next.cancelled) {
+      next = this.lockQueue.shift();
+    }
     if (next) {
       const lock = this.nextNonce();
-      next(lock);
+      next.resolve(lock);
     } else {
       this.isLocked = false;
     }
@@ -146,16 +167,22 @@ export class NonceManager {
       throw new Error('NonceManager has been destroyed');
     }
 
-    const acquirePromise = this.acquire();
+    if (!this.isLocked) {
+      this.isLocked = true;
+      return this.nextNonce();
+    }
+
+    const { promise, cancel } = this.enqueue();
 
     const timeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(() => {
+        cancel();
         reject(new Error(`NonceManager: acquire timed out after ${timeoutMs}ms`));
       }, timeoutMs);
     });
 
     try {
-      return await Promise.race([acquirePromise, timeoutPromise]);
+      return await Promise.race([promise, timeoutPromise]);
     } catch (err) {
       if (err instanceof Error) {
         throw err;
