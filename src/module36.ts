@@ -4,7 +4,7 @@ import { streamProgress, withdrawableLocal } from './utils.js';
 export interface Module36Config {
   /** Maximum number of snapshot diffs retained in the LRU cache */
   cacheSize?: number;
-  /** Enable memoized diffing for ≥20% throughput improvement */
+  /** Enable memoized diffing; actual speedup depends on hit rate — see `getPerformanceMetrics()` for a measured value */
   enableOptimization?: boolean;
 }
 
@@ -31,7 +31,12 @@ export interface Module36Metrics {
   totalDiffs: number;
   cacheHits: number;
   cacheMisses: number;
-  performanceGainPercent: number;
+  /**
+   * Measured, not assumed: `(avgMissMs - avgHitMs) / avgMissMs * 100`, based
+   * on this instance's own accumulated timings. `null` until at least one
+   * hit and one miss have both been recorded (nothing to compare yet).
+   */
+  measuredSpeedupPercent: number | null;
   averageExecutionTimeMs: number;
 }
 
@@ -44,10 +49,12 @@ function statusKey(stream: StreamInfo): string {
 }
 
 /**
- * Module 36: High-performance stream snapshot diff engine.
+ * Module 36: stream snapshot diff engine with LRU-memoized diffing.
  *
- * Implements Feature #36 with LRU-memoized diffing to deliver ≥20%
- * throughput improvement when repeatedly comparing stream snapshots.
+ * Implements Feature #36. Speedup from caching is workload-dependent
+ * (proportional to cache hit rate); call `getPerformanceMetrics()` for
+ * this instance's own measured hit/miss timing rather than assuming a
+ * fixed percentage.
  */
 export class Module36 {
   private readonly cacheSize: number;
@@ -58,6 +65,8 @@ export class Module36 {
   private cacheHits = 0;
   private cacheMisses = 0;
   private totalExecutionTimeMs = 0;
+  private hitExecutionTimeMs = 0;
+  private missExecutionTimeMs = 0;
 
   constructor(config: Module36Config = {}) {
     this.cacheSize = config.cacheSize ?? 1000;
@@ -83,9 +92,11 @@ export class Module36 {
     if (this.enableOptimization) {
       const cached = this.cache.get(cacheKey);
       if (cached) {
+        const elapsed = performance.now() - start;
         this.cacheHits++;
         this.totalDiffs++;
-        this.totalExecutionTimeMs += performance.now() - start;
+        this.totalExecutionTimeMs += elapsed;
+        this.hitExecutionTimeMs += elapsed;
         // Refresh LRU order
         this.cache.delete(cacheKey);
         this.cache.set(cacheKey, cached);
@@ -120,8 +131,10 @@ export class Module36 {
       this.cache.set(cacheKey, result);
     }
 
+    const elapsed = performance.now() - start;
     this.totalDiffs++;
-    this.totalExecutionTimeMs += performance.now() - start;
+    this.totalExecutionTimeMs += elapsed;
+    this.missExecutionTimeMs += elapsed;
     return result;
   }
 
@@ -154,18 +167,23 @@ export class Module36 {
     this.cacheMisses = 0;
     this.totalDiffs = 0;
     this.totalExecutionTimeMs = 0;
+    this.hitExecutionTimeMs = 0;
+    this.missExecutionTimeMs = 0;
   }
 
   public getPerformanceMetrics(): Module36Metrics {
-    const totalRequests = this.cacheHits + this.cacheMisses;
-    const hitRate = totalRequests > 0 ? this.cacheHits / totalRequests : 0;
-    const performanceGainPercent = Math.round(hitRate * 35 + 20);
+    const avgHitMs = this.cacheHits > 0 ? this.hitExecutionTimeMs / this.cacheHits : null;
+    const avgMissMs = this.cacheMisses > 0 ? this.missExecutionTimeMs / this.cacheMisses : null;
+    const measuredSpeedupPercent =
+      avgHitMs !== null && avgMissMs !== null && avgMissMs > 0
+        ? ((avgMissMs - avgHitMs) / avgMissMs) * 100
+        : null;
 
     return {
       totalDiffs: this.totalDiffs,
       cacheHits: this.cacheHits,
       cacheMisses: this.cacheMisses,
-      performanceGainPercent: this.enableOptimization ? performanceGainPercent : 0,
+      measuredSpeedupPercent: this.enableOptimization ? measuredSpeedupPercent : null,
       averageExecutionTimeMs:
         this.totalDiffs > 0 ? this.totalExecutionTimeMs / this.totalDiffs : 0,
     };
