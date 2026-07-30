@@ -208,17 +208,26 @@ describe('StreamsModule.create() — success path', () => {
 
   it('classifies rate limits thrown while submitting the transaction', async () => {
     mockSimulate.mockResolvedValue(simSuccess(u64Scv(1n)));
+    // createRpcServer() now retries a rate-limited sendTransaction internally
+    // (3 attempts at the "retry-after"-supplied delay) before giving up, so
+    // the mock must stay rejected across all of them rather than just once.
     mockSend.mockRejectedValue({ response: { status: 429, headers: { 'retry-after': '3' } } });
 
     const { StreamsModule } = await import('../streams.js');
     const sdk = new StreamsModule(makeConfig());
 
-    await expect(sdk.create({
+    const promise = sdk.create({
       recipient:       RECIPIENT,
       token:           TOKEN,
       depositAmount:   '1000',
       durationSeconds: 3600,
-    })).rejects.toMatchObject({
+    });
+    promise.catch(() => {});
+
+    // Drain createRpcServer's 3 retry backoffs (3000ms each, from retry-after: 3).
+    await vi.advanceTimersByTimeAsync(3000 * 3);
+
+    await expect(promise).rejects.toMatchObject({
       name: 'RateLimitError',
       retryAfterMs: 3000,
     });
@@ -226,17 +235,26 @@ describe('StreamsModule.create() — success path', () => {
 
   it('classifies rate limits thrown while polling for confirmation', async () => {
     mockSimulate.mockResolvedValue(simSuccess(u64Scv(1n)));
+    // Same reasoning as above: createRpcServer retries getTransaction
+    // internally (500ms, 1000ms, 2000ms backoff, since this JSON-RPC error
+    // shape carries no "retry-after" header) before this surfaces.
     mockGetTransaction.mockRejectedValue({ code: -32029 });
 
     const { StreamsModule } = await import('../streams.js');
     const sdk = new StreamsModule(makeConfig());
 
-    await expect(runThroughFirstPoll(() => sdk.create({
+    const promise = sdk.create({
       recipient:       RECIPIENT,
       token:           TOKEN,
       depositAmount:   '1000',
       durationSeconds: 3600,
-    }))).rejects.toBeInstanceOf(RateLimitError);
+    });
+    promise.catch(() => {});
+
+    await vi.advanceTimersByTimeAsync(1000); // pre-existing pre-poll delay
+    await vi.advanceTimersByTimeAsync(500 + 1000 + 2000); // createRpcServer's retry backoff
+
+    await expect(promise).rejects.toBeInstanceOf(RateLimitError);
   });
 
   it('uses configured confirmation polling interval and attempts', async () => {

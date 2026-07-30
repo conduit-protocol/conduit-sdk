@@ -63,18 +63,18 @@ export function createRpcServer(rpcUrl: string): SorobanRpc.Server {
 
   return new Proxy(server, {
     get(target, propKey, receiver) {
-      const origMethod = (target as any)[propKey];
+      const origMethod = Reflect.get(target, propKey, receiver) as unknown;
       if (typeof origMethod === 'function' && typeof propKey === 'string' && ASYNC_METHODS.includes(propKey)) {
-        return async function (...args: any[]) {
+        return async function (...args: unknown[]) {
           const MAX_RETRIES = 3;
           let delay = 500;
 
           for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
             try {
-              return await origMethod.apply(target, args);
+              return await (origMethod as (...a: unknown[]) => Promise<unknown>).apply(target, args);
             } catch (err) {
               const rateLimitErr = RateLimitError.fromRpcError(err);
-              
+
               if (!rateLimitErr || attempt === MAX_RETRIES) {
                 throw rateLimitErr ?? err;
               }

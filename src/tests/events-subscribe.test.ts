@@ -110,7 +110,10 @@ describe('subscribeToStream', () => {
 
     const sub = subscribeToStream('http://localhost:8000', 'CSTREAM', { pollInterval: 1000 });
     await vi.waitFor(() => expect(mockGetEvents).toHaveBeenCalledTimes(1));
-    expect(warn).toHaveBeenCalled();
+    // createRpcServer()'s retry-wrapping Proxy adds an extra microtask hop
+    // between the mock rejecting and poll()'s own catch/console.warn running,
+    // so wait for it rather than asserting immediately.
+    await vi.waitFor(() => expect(warn).toHaveBeenCalled());
 
     await vi.advanceTimersByTimeAsync(1000);
     await vi.waitFor(() => expect(mockGetEvents).toHaveBeenCalledTimes(2));
@@ -143,8 +146,10 @@ describe('subscribeToStream', () => {
     const sub = subscribeToStream('http://localhost:8000', 'CSTREAM', { pollInterval: 5000 });
     await vi.waitFor(() => expect(mockGetEvents).toHaveBeenCalledTimes(1));
 
-    // The next poll is scheduled and pending in the timer queue.
-    expect(vi.getTimerCount()).toBeGreaterThan(0);
+    // The next poll is scheduled and pending in the timer queue. createRpcServer()'s
+    // retry-wrapping Proxy adds an extra microtask hop after the mock resolves before
+    // poll() reaches its own setTimeout(), so wait for it rather than asserting immediately.
+    await vi.waitFor(() => expect(vi.getTimerCount()).toBeGreaterThan(0));
 
     sub.unsubscribe();
 

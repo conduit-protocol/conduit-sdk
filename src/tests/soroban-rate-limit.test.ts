@@ -57,11 +57,17 @@ describe('soroban.ts rate limit handling', () => {
       message: 'Request failed with status code 429',
       response: { status: 429, headers: { 'retry-after': '1' } },
     };
-    mockSimulateTransaction.mockRejectedValueOnce(axiosStyle429);
+    // createRpcServer() now retries a rate-limited call internally (3
+    // attempts at the "retry-after"-supplied delay) before giving up, so
+    // the mock must stay rejected across all of them rather than just once.
+    mockSimulateTransaction.mockRejectedValue(axiosStyle429);
 
-    await expect(
-      simulateReadOnly('http://localhost:8000', 'passphrase', {} as any)
-    ).rejects.toBeInstanceOf(RateLimitError);
+    const promise = simulateReadOnly('http://localhost:8000', 'passphrase', {} as any);
+    promise.catch(() => {});
+
+    await vi.advanceTimersByTimeAsync(1000 * 3);
+
+    await expect(promise).rejects.toBeInstanceOf(RateLimitError);
   });
 
   it('still throws the original error for non-rate-limit failures', async () => {
