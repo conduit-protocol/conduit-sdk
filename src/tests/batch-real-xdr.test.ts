@@ -41,13 +41,15 @@ function decode(envelope: string, passphrase: string = Networks.TESTNET): Transa
 }
 
 describe('ConduitBatcher builds real XDR', () => {
+  let batcher: ConduitBatcher;
+
   beforeEach(() => {
-    ConduitBatcher.reset();
+    batcher = new ConduitBatcher();
   });
 
   describe('the placeholder is gone', () => {
     it('never returns the mock XDR string', () => {
-      const result = ConduitBatcher.execute(
+      const result = batcher.execute(
         [{ token: CONTRACT_ID, sender: SOURCE, recipient: RECIPIENT, amount: 100 }],
         { context: CONTEXT },
       );
@@ -58,7 +60,7 @@ describe('ConduitBatcher builds real XDR', () => {
     });
 
     it('produces XDR that round-trips through the real codec', () => {
-      const result = ConduitBatcher.execute(
+      const result = batcher.execute(
         [{ token: CONTRACT_ID, amount: 100 }],
         { context: CONTEXT },
       );
@@ -79,7 +81,7 @@ describe('ConduitBatcher builds real XDR', () => {
     // N batched operations must produce N transactions.
     it('returns one XDR per operation', () => {
       const streams = Array.from({ length: 4 }, (_, i) => ({ token: CONTRACT_ID, amount: i + 1 }));
-      const result = ConduitBatcher.execute(streams, { context: CONTEXT });
+      const result = batcher.execute(streams, { context: CONTEXT });
 
       expect(result.operations).toBe(4);
       expect(result.xdrs).toHaveLength(4);
@@ -90,14 +92,14 @@ describe('ConduitBatcher builds real XDR', () => {
 
     it('assigns consecutive sequence numbers so the batch submits in order', () => {
       const streams = [{ amount: 1 }, { amount: 2 }, { amount: 3 }];
-      const result = ConduitBatcher.execute(streams, { context: CONTEXT });
+      const result = batcher.execute(streams, { context: CONTEXT });
 
       const sequences = result.xdrs!.map(e => decode(e).sequence);
       expect(sequences).toEqual(['101', '102', '103']);
     });
 
     it('reports the source operation index and method per transaction', () => {
-      const result = ConduitBatcher.execute([{ amount: 1 }, { amount: 2 }], {
+      const result = batcher.execute([{ amount: 1 }, { amount: 2 }], {
         context: CONTEXT,
         method: 'create_stream',
       });
@@ -109,14 +111,14 @@ describe('ConduitBatcher builds real XDR', () => {
     });
 
     it('marks offline-built transactions as not yet prepared', () => {
-      const result = ConduitBatcher.execute([{ amount: 1 }], { context: CONTEXT });
+      const result = batcher.execute([{ amount: 1 }], { context: CONTEXT });
       expect(result.prepared).toBe(false);
     });
   });
 
   describe('missing context fails loudly instead of faking success', () => {
     it('fails when no context is supplied', () => {
-      const result = ConduitBatcher.execute([{ amount: 1 }]);
+      const result = batcher.execute([{ amount: 1 }]);
 
       expect(result.success).toBe(false);
       expect(result.xdr).toBe('');
@@ -125,14 +127,14 @@ describe('ConduitBatcher builds real XDR', () => {
 
     it('still reports chunking so the caller can see the batch was understood', () => {
       const streams = Array.from({ length: 60 }, (_, i) => ({ amount: i + 1 }));
-      const result = ConduitBatcher.execute(streams);
+      const result = batcher.execute(streams);
 
       expect(result.success).toBe(false);
       expect(result.chunks).toBe(2);
     });
 
     it('fails when the sync path is given only an rpcUrl', () => {
-      const result = ConduitBatcher.execute([{ amount: 1 }], {
+      const result = batcher.execute([{ amount: 1 }], {
         context: {
           contractId: CONTRACT_ID,
           sourceAccount: SOURCE,
@@ -150,7 +152,7 @@ describe('ConduitBatcher builds real XDR', () => {
       ['a bad sourceAccount', { ...CONTEXT, sourceAccount: 'nope' }, 'sourceAccount'],
       ['a non-numeric sequence', { ...CONTEXT, sequence: 'abc' }, 'sequence'],
     ])('rejects %s', (_label, context, expected) => {
-      const result = ConduitBatcher.execute([{ amount: 1 }], {
+      const result = batcher.execute([{ amount: 1 }], {
         context: context as BatchTransactionContext,
       });
 
@@ -168,7 +170,7 @@ describe('ConduitBatcher builds real XDR', () => {
     });
 
     it('accepts an explicit passphrase in place of a named network', () => {
-      const result = ConduitBatcher.execute([{ amount: 1 }], {
+      const result = batcher.execute([{ amount: 1 }], {
         context: {
           contractId: CONTRACT_ID,
           sourceAccount: SOURCE,
@@ -184,7 +186,7 @@ describe('ConduitBatcher builds real XDR', () => {
 
   describe('empty batches', () => {
     it('is a valid no-op needing no context', () => {
-      const result = ConduitBatcher.execute([]);
+      const result = batcher.execute([]);
 
       expect(result.success).toBe(true);
       expect(result.operations).toBe(0);
@@ -196,7 +198,7 @@ describe('ConduitBatcher builds real XDR', () => {
 
   describe('executeAsync', () => {
     it('builds real XDR when given a context', async () => {
-      const result = await ConduitBatcher.executeAsync(
+      const result = await batcher.executeAsync(
         [{ method: 'withdraw', params: { streamId: 1n } }],
         { context: CONTEXT },
       );
@@ -207,7 +209,7 @@ describe('ConduitBatcher builds real XDR', () => {
     });
 
     it('fails without a context rather than returning a placeholder', async () => {
-      const result = await ConduitBatcher.executeAsync([
+      const result = await batcher.executeAsync([
         { method: 'withdraw', params: { streamId: 1n } },
       ]);
 
@@ -220,7 +222,7 @@ describe('ConduitBatcher builds real XDR', () => {
       const ac = new AbortController();
       ac.abort();
 
-      const result = await ConduitBatcher.executeAsync(
+      const result = await batcher.executeAsync(
         [{ method: 'withdraw', params: { streamId: 1n } }],
         ac.signal,
       );
@@ -230,7 +232,7 @@ describe('ConduitBatcher builds real XDR', () => {
     });
 
     it('builds one transaction per queued operation', async () => {
-      const result = await ConduitBatcher.executeAsync(
+      const result = await batcher.executeAsync(
         [
           { method: 'withdraw', params: { streamId: 1n } },
           { method: 'cancel', params: { streamId: 2n } },

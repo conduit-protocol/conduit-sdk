@@ -59,24 +59,24 @@ describe('StreamBuilder Network Interruption & Payload Queueing Regression Tests
     };
 
     await expect(builder.submit(brokenNetworkSubmit, { maxRetries: 2, retryDelayMs: 10 })).rejects.toThrow(
-      'StreamBuilder network payload submission failed after 2 retries without payload drop: Network unreachable'
+      'StreamBuilder network payload submission failed after 2 retries: Network unreachable'
     );
 
-    // Payload is preserved in pendingQueue so caller can retry or inspect
-    expect(builder.getPendingQueue().length).toBe(1);
-    expect(builder.getPendingQueue()[0]).toMatchObject({
-      amount: 500,
-    });
+    // The payload is removed from pendingQueue on final failure too, not just
+    // on success — leaving it there after the caller has already seen the
+    // rejection is what issue #188 reported as a leak.
+    expect(builder.getPendingQueue().length).toBe(0);
 
     builder.cleanup();
   });
 
   it('returns validation errors from ConduitBatcher for invalid batch items', () => {
-    const emptyResult = ConduitBatcher.execute([], { context: TEST_CONTEXT });
+    const batcher = new ConduitBatcher();
+    const emptyResult = batcher.execute([], { context: TEST_CONTEXT });
     expect(emptyResult.success).toBe(true);
     expect(emptyResult.operations).toBe(0);
 
-    const nullItemResult = ConduitBatcher.execute([null as any], { context: TEST_CONTEXT });
+    const nullItemResult = batcher.execute([null as any], { context: TEST_CONTEXT });
     expect(nullItemResult.success).toBe(false);
     expect(nullItemResult.errors![0]).toContain('cannot be null or undefined');
   });

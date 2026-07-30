@@ -1,8 +1,17 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { StreamBuilder } from '../builder.js';
 import { FeeEstimator } from '../fee-estimator.js';
 import { WalletConnectAdapter } from '../adapters/walletconnect.js';
 import { ConduitBatcher } from '../builder.js';
+import type { SignTransactionOptions } from '../adapters/types.js';
+
+/** Real chain context so ConduitBatcher can build genuine transaction XDR. */
+const TEST_CONTEXT = {
+  contractId: 'CAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQC526',
+  sourceAccount: 'GAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQDZ7H',
+  network: 'testnet' as const,
+  sequence: '1',
+};
 
 // ============================================================================
 // Issue #193: FeeEstimator should use bigint stroops, not floating-point
@@ -53,7 +62,7 @@ describe('Issue #189: WalletConnectAdapter networkPassphrase validation', () => 
     });
 
     await expect(
-      adapter.signTransaction('AAAA...', { networkPassphrase: undefined })
+      adapter.signTransaction('AAAA...', { networkPassphrase: undefined } as unknown as SignTransactionOptions)
     ).rejects.toThrow('networkPassphrase is required');
   });
 
@@ -74,7 +83,7 @@ describe('Issue #189: WalletConnectAdapter networkPassphrase validation', () => 
     });
 
     const passphrase = 'Test SDF Network ; September 2015';
-    const result = await adapter.signTransaction('AAAA...', {
+    await adapter.signTransaction('AAAA...', {
       networkPassphrase: passphrase,
     });
 
@@ -124,10 +133,8 @@ describe('Issue #189: WalletConnectAdapter networkPassphrase validation', () => 
 describe('Issue #188: StreamBuilder.submit() queue cleanup on failure', () => {
   it('should remove payload from pendingQueue when all retries are exhausted', async () => {
     const builder = new StreamBuilder();
-    let attemptCount = 0;
 
     const mockSubmitFn = vi.fn().mockImplementation(() => {
-      attemptCount++;
       throw new Error('Network error');
     });
 
@@ -142,7 +149,6 @@ describe('Issue #188: StreamBuilder.submit() queue cleanup on failure', () => {
   });
 
   it('should prevent queue overflow from accumulated failed payloads', async () => {
-    const builder = new StreamBuilder({ maxQueueSize: 5 });
     const mockSubmitFn = vi.fn().mockRejectedValue(new Error('Network error'));
 
     // Try to submit multiple payloads that all fail
@@ -163,7 +169,11 @@ describe('Issue #188: StreamBuilder.submit() queue cleanup on failure', () => {
   });
 
   it('should remove payload on success but keep it during retries', async () => {
-    const builder = new StreamBuilder();
+    const builder = new StreamBuilder()
+      .token('CAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQC526')
+      .sender('GAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQDZ7H')
+      .recipient('GABAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEJXA')
+      .amount(500);
     let attemptCount = 0;
 
     const mockSubmitFn = vi.fn().mockImplementation(() => {
@@ -200,11 +210,11 @@ describe('Issue #187: ConduitBatcher instance state isolation', () => {
 
     const result1 = await batcher1.executeAsync([
       { method: 'stream_create', params: { amount: 1000 } },
-    ]);
+    ], { context: TEST_CONTEXT });
 
     const result2 = await batcher2.executeAsync([
       { method: 'stream_create', params: { amount: 2000 } },
-    ]);
+    ], { context: TEST_CONTEXT });
 
     // Each batcher should process independently
     expect(result1.success).toBe(true);

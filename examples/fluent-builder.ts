@@ -31,7 +31,7 @@ function main() {
   console.log('Stream 2 built:', stream2);
 
   console.log('\nExecuting batch operation via ConduitBatcher...');
-  const result = ConduitBatcher.execute([stream1, stream2]);
+  const result = new ConduitBatcher().execute([stream1, stream2]);
 
   console.log('✅ Batch Execution Result:');
   console.log('  Success:      ', result.success);

@@ -1,8 +1,16 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { StreamBuilder } from '../builder.js';
 import { FeeEstimator } from '../fee-estimator.js';
 import { WalletConnectAdapter } from '../adapters/walletconnect.js';
 import { ConduitBatcher } from '../builder.js';
+
+/** Real chain context so ConduitBatcher can build genuine transaction XDR. */
+const TEST_CONTEXT = {
+  contractId: 'CAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQC526',
+  sourceAccount: 'GAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQDZ7H',
+  network: 'testnet' as const,
+  sequence: '1',
+};
 
 // ============================================================================
 // Issue #193: FeeEstimator edge cases
@@ -17,9 +25,14 @@ describe('Issue #193: FeeEstimator edge cases', () => {
   });
 
   it('should reject negative bigint fees', async () => {
+    // estimateFee() never throws — invalid responses fall back to the
+    // previous baseFee and surface via lastError/onError instead.
     const estimator = new FeeEstimator(100n);
-    const error = await estimator.estimateFee(async () => -100n).catch(e => e);
-    expect(error).toEqual(new Error('Invalid network fee response'));
+    const onError = vi.fn();
+    const result = await estimator.estimateFee(async () => -100n, { onError });
+    expect(result).toBe(100n);
+    expect(estimator.lastError).toEqual(new Error('Invalid network fee response'));
+    expect(onError).toHaveBeenCalledWith(new Error('Invalid network fee response'));
   });
 
   it('should handle zero fee', async () => {
@@ -94,7 +107,7 @@ describe('Issue #189: WalletConnectAdapter edge cases', () => {
     const passphrase = 'Test SDF Network ; September 2015';
     await adapter.signTransaction('AAAA...', { networkPassphrase: passphrase });
 
-    const callArgs = mockClient.request.mock.calls[0][0];
+    const callArgs = mockClient.request.mock.calls[0]![0];
     expect(callArgs.request.params.networkPassphrase).toBe(passphrase);
   });
 
@@ -175,7 +188,11 @@ describe('Issue #188: StreamBuilder edge cases', () => {
   });
 
   it('should handle concurrent submissions with proper queue cleanup', async () => {
-    const builder = new StreamBuilder({ maxQueueSize: 10 });
+    const builder = new StreamBuilder({ maxQueueSize: 10 })
+      .token('CAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQC526')
+      .sender('GAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQDZ7H')
+      .recipient('GABAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEJXA')
+      .amount(100);
     const mockSubmitFn = vi.fn(async () => ({ success: true }));
 
     // Submit multiple concurrent operations
@@ -190,27 +207,39 @@ describe('Issue #188: StreamBuilder edge cases', () => {
   });
 
   it('should enforce maxQueueSize limit', async () => {
-    const builder = new StreamBuilder({ maxQueueSize: 2 });
+    const builder = new StreamBuilder({ maxQueueSize: 2 })
+      .token('CAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQC526')
+      .sender('GAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQDZ7H')
+      .recipient('GABAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEJXA')
+      .amount(100);
     const mockSubmitFn = vi.fn(async () => {
       // Simulate slow response to fill queue
       await new Promise(resolve => setTimeout(resolve, 100));
       return { success: true };
     });
 
-    try {
-      // Try to submit more than maxQueueSize at once
-      for (let i = 0; i < 5; i++) {
-        builder.submit(mockSubmitFn, { maxRetries: 0, retryDelayMs: 1 });
-      }
-    } catch (e) {
-      expect(e).toEqual(expect.objectContaining({
+    // Fire more submissions than maxQueueSize at once (each is a Promise, not
+    // awaited individually — Promise.allSettled avoids unhandled rejections
+    // while still letting us inspect which ones were rejected for backpressure).
+    const results = await Promise.allSettled(
+      Array.from({ length: 5 }, () => builder.submit(mockSubmitFn, { maxRetries: 0, retryDelayMs: 1 })),
+    );
+
+    const rejected = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+    expect(rejected.length).toBeGreaterThan(0);
+    for (const r of rejected) {
+      expect(r.reason).toEqual(expect.objectContaining({
         message: expect.stringContaining('queue is full'),
       }));
     }
   });
 
   it('should retry with exponential backoff', async () => {
-    const builder = new StreamBuilder();
+    const builder = new StreamBuilder()
+      .token('CAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQC526')
+      .sender('GAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQDZ7H')
+      .recipient('GABAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEJXA')
+      .amount(250);
     let attemptCount = 0;
 
     const mockSubmitFn = vi.fn(async () => {
@@ -285,12 +314,12 @@ describe('Issue #187: ConduitBatcher edge cases', () => {
     const batcher2 = new ConduitBatcher();
 
     const result1 = batcher1.execute([
-      { token: 'C...', sender: 'G...', recipient: 'G...', amount: 1000 },
-    ]);
+      { method: 'create', params: { amount: 1000 } },
+    ], { context: TEST_CONTEXT });
 
     const result2 = batcher2.execute([
-      { token: 'C...', sender: 'G...', recipient: 'G...', amount: 2000 },
-    ]);
+      { method: 'create', params: { amount: 2000 } },
+    ], { context: TEST_CONTEXT });
 
     expect(result1.success).toBe(true);
     expect(result2.success).toBe(true);

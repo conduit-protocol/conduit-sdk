@@ -11,58 +11,60 @@ const TEST_CONTEXT = {
 
 
 describe('ConduitBatcher validation', () => {
+  let batcher: ConduitBatcher;
+
   beforeEach(() => {
-    ConduitBatcher.reset();
+    batcher = new ConduitBatcher();
   });
 
   afterEach(() => {
-    ConduitBatcher.reset();
+    batcher.reset();
   });
 
   it('should reject null payload', () => {
-    const result = ConduitBatcher.execute(null as any, { context: TEST_CONTEXT });
+    const result = batcher.execute(null as any, { context: TEST_CONTEXT });
     expect(result.success).toBe(false);
     expect(result.errors).toBeDefined();
     expect(result.errors?.some(e => e.includes('null'))).toBe(true);
   });
 
   it('should reject undefined payload', () => {
-    const result = ConduitBatcher.execute(undefined as any, { context: TEST_CONTEXT });
+    const result = batcher.execute(undefined as any, { context: TEST_CONTEXT });
     expect(result.success).toBe(false);
     expect(result.errors).toBeDefined();
     expect(result.errors?.some(e => e.includes('undefined'))).toBe(true);
   });
 
   it('should reject non-array payload', () => {
-    const result = ConduitBatcher.execute('not an array' as any, { context: TEST_CONTEXT });
+    const result = batcher.execute('not an array' as any, { context: TEST_CONTEXT });
     expect(result.success).toBe(false);
     expect(result.errors).toBeDefined();
     expect(result.errors?.some(e => e.includes('array'))).toBe(true);
   });
 
   it('should reject array with null items', () => {
-    const result = ConduitBatcher.execute([null] as any, { context: TEST_CONTEXT });
+    const result = batcher.execute([null] as any, { context: TEST_CONTEXT });
     expect(result.success).toBe(false);
     expect(result.errors).toBeDefined();
     expect(result.errors?.some(e => e.includes('null'))).toBe(true);
   });
 
   it('should reject array with undefined items', () => {
-    const result = ConduitBatcher.execute([undefined] as any, { context: TEST_CONTEXT });
+    const result = batcher.execute([undefined] as any, { context: TEST_CONTEXT });
     expect(result.success).toBe(false);
     expect(result.errors).toBeDefined();
     expect(result.errors?.some(e => e.includes('undefined'))).toBe(true);
   });
 
   it('should reject array with non-object items', () => {
-    const result = ConduitBatcher.execute(['not an object'] as any, { context: TEST_CONTEXT });
+    const result = batcher.execute(['not an object'] as any, { context: TEST_CONTEXT });
     expect(result.success).toBe(false);
     expect(result.errors).toBeDefined();
     expect(result.errors?.some(e => e.includes('must be an object'))).toBe(true);
   });
 
   it('should reject item with invalid token (non C-address)', () => {
-    const result = ConduitBatcher.execute([
+    const result = batcher.execute([
       { token: 'not-a-valid-contract', sender: 'GA1', recipient: 'GB1', amount: 100 },
     ], { context: TEST_CONTEXT });
     expect(result.success).toBe(false);
@@ -71,7 +73,7 @@ describe('ConduitBatcher validation', () => {
   });
 
   it('should reject item with invalid sender (non G-address)', () => {
-    const result = ConduitBatcher.execute([
+    const result = batcher.execute([
       { token: 'CAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQC526', sender: 'not-a-valid-key', recipient: 'GB1', amount: 100 },
     ], { context: TEST_CONTEXT });
     expect(result.success).toBe(false);
@@ -80,7 +82,7 @@ describe('ConduitBatcher validation', () => {
   });
 
   it('should reject item with invalid recipient (non G-address)', () => {
-    const result = ConduitBatcher.execute([
+    const result = batcher.execute([
       { token: 'CAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQC526', sender: 'GAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQDZ7H', recipient: 'bad-recipient', amount: 100 },
     ], { context: TEST_CONTEXT });
     expect(result.success).toBe(false);
@@ -89,7 +91,7 @@ describe('ConduitBatcher validation', () => {
   });
 
   it('should reject item with zero amount', () => {
-    const result = ConduitBatcher.execute([
+    const result = batcher.execute([
       { token: 'CAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQC526', sender: 'GAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQDZ7H', recipient: 'GAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQDZ7H', amount: 0 },
     ], { context: TEST_CONTEXT });
     expect(result.success).toBe(false);
@@ -98,7 +100,7 @@ describe('ConduitBatcher validation', () => {
   });
 
   it('should reject item with negative amount', () => {
-    const result = ConduitBatcher.execute([
+    const result = batcher.execute([
       { token: 'CAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQC526', sender: 'GAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQDZ7H', recipient: 'GAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQDZ7H', amount: -50 },
     ], { context: TEST_CONTEXT });
     expect(result.success).toBe(false);
@@ -114,14 +116,14 @@ describe('ConduitBatcher validation', () => {
       sender: 'GAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQDZ7H',
       recipient: 'GAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQDZ7H',
     }];
-    const result = ConduitBatcher.execute(validPayload, { context: TEST_CONTEXT });
+    const result = batcher.execute(validPayload, { context: TEST_CONTEXT });
     expect(result.success).toBe(true);
     expect(result.operations).toBe(1);
   });
 
   it('should not validate missing optional fields', () => {
     // Items without token/sender/recipient fields should not trigger address validation
-    const result = ConduitBatcher.execute([
+    const result = batcher.execute([
       { method: 'create', params: { amount: 100 } },
     ], { context: TEST_CONTEXT });
     expect(result.success).toBe(true);
@@ -130,14 +132,14 @@ describe('ConduitBatcher validation', () => {
 
   it('should handle bigint fields safely in payload', () => {
     const payloadWithBigInt = [{ method: 'create', params: { amount: 100n } }];
-    const result = ConduitBatcher.execute(payloadWithBigInt, { context: TEST_CONTEXT });
+    const result = batcher.execute(payloadWithBigInt, { context: TEST_CONTEXT });
     expect(result.success).toBe(true);
     expect(result.operations).toBe(1);
   });
 
   it('should throw when trying to execute after destroy', () => {
-    ConduitBatcher.destroy();
-    expect(() => ConduitBatcher.execute([], { context: TEST_CONTEXT })).toThrow(/destroyed/i);
+    batcher.destroy();
+    expect(() => batcher.execute([], { context: TEST_CONTEXT })).toThrow(/destroyed/i);
   });
 });
 
