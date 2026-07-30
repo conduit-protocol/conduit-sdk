@@ -343,6 +343,21 @@ clearServerCache();
 > it yourself unless you are using the low-level Soroban helpers directly and want to manage
 > retries on your own.
 
+### `getTokenDecimals(rpcUrl, passphrase, callerAddr, tokenId) → Promise<number>`
+
+Queries a SEP-41 token contract's `decimals()`. A token's decimals cannot change after
+deployment, so results are cached per `rpcUrl:tokenId` for the lifetime of the process —
+repeated calls for the same token (e.g. across multiple `client.streams.create()` calls) resolve
+from cache instead of issuing another RPC simulation. Concurrent calls for the same token also
+dedupe onto a single in-flight simulation. A failed simulation is not cached, so the next call
+retries against the network.
+
+```typescript
+import { getTokenDecimals, clearTokenDecimalsCache } from '@conduit-protocol/sdk';
+
+clearTokenDecimalsCache(); // force a fresh simulation on the next call
+```
+
 ---
 
 ## Fluent Builder API
@@ -398,6 +413,44 @@ if (!result.success) {
 * `static executeAsync(operations: BatchOperation[], signal?: AbortSignal): Promise<BatchResult>` - Asynchronously execute a batch with abort signal support.
 
 **Throws:** `ConduitError` if batcher is destroyed.
+
+---
+
+### `buildBatchTransactions(operations, context) → Promise<BuiltBatchTransaction[]>`
+
+Builds one transaction per operation and, when `context.rpcUrl` is set, simulates and assembles
+each via RPC so the returned XDR is ready to submit. Simulations for the batch's operations run
+**concurrently** (not one at a time) since each operation's transaction and simulation are
+independent of every other operation's. Each result's `index` field reflects its position in the
+input `operations` array — use it to submit transactions in order, since sequence numbers are
+still consumed sequentially even though simulation itself is not.
+
+---
+
+## `NonceManager` (internal — `src/nonce/NonceManager.ts`)
+
+Not currently part of the package's public exports (`src/index.ts`) or the rollup-built `dist/cjs`
+bundle (only reachable from the entry point graph); documented here for maintainers and for
+consumers building against SDK source directly.
+
+```typescript
+const nonces = new NonceManager({ startNonce: 0n, maxNonce: 1_000_000n });
+const lock = await nonces.acquire();
+// ... use lock.nonce ...
+lock.release();
+```
+
+A single-lock queue that hands out sequential nonces one caller at a time. `acquire()` resolves
+immediately if the lock is free, or queues behind the current holder otherwise.
+
+* `acquire(): Promise<NonceLock>` — waits for the lock, then resolves with `{ nonce, release }`.
+* `acquireWithFallback(timeoutMs = 5000): Promise<NonceLock>` — like `acquire`, but rejects if the
+  lock isn't granted within `timeoutMs`. A timed-out call is cancelled out of the wait queue, so
+  it never holds the lock hostage — a later `release()` from the current holder correctly hands
+  the lock to the next live waiter (or frees it) instead of dead-ending on an abandoned caller.
+* `safeAcquire(retries = 3, delayMs = 100): Promise<NonceLock>` — retries `acquireWithFallback`
+  with linear backoff.
+* `reset(nonce?)`, `destroy()`, `.current`, `.remaining`, `.acquired` — state inspection/reset.
 
 ---
 
