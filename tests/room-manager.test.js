@@ -49,7 +49,7 @@ describe('RoomManager', () => {
     }));
   });
 
-  test('leaveAll removes a client from every room it joined', () => {
+  test('disconnectClient removes a client from every room it joined', () => {
     const manager = new RoomManager({ maxRoomSize: 5 });
     const ws = { send: () => {} };
 
@@ -58,7 +58,7 @@ describe('RoomManager', () => {
     manager.join('client1', 'roomC', ws);
     manager.join('client2', 'roomA', ws);
 
-    manager.leaveAll('client1');
+    manager.disconnectClient('client1');
 
     expect(manager._clientRooms.has('client1')).toBe(false);
     expect(manager._rooms.get('roomA').has('client1')).toBe(false);
@@ -68,9 +68,9 @@ describe('RoomManager', () => {
     expect(manager._rooms.get('roomA').has('client2')).toBe(true);
   });
 
-  test('leaveAll on an unknown client is a no-op', () => {
+  test('disconnectClient on an unknown client is a no-op', () => {
     const manager = new RoomManager({ maxRoomSize: 5 });
-    expect(() => manager.leaveAll('ghost')).not.toThrow();
+    expect(() => manager.disconnectClient('ghost')).not.toThrow();
   });
 
   test('handleClose disconnects a client from all rooms via the shared roomManager', () => {
