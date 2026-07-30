@@ -83,26 +83,6 @@ export class ConduitClient {
   }
 
   /**
-   * Dynamically attach or change the active wallet adapter.
-   *
-   * Validates that the new wallet's chain matches the client's configured
-   * network before accepting it — prevents silent cross-chain mismatches
-   * from reaching the smart contract (fixes #157).
-   *
-   * **Wallet propagation contract:**
-   * - {@link StreamsModule}: Updated immediately — all subsequent stream
-   *   operations (create, withdraw, cancel, etc.) use the new wallet.
-   * - {@link FactoryModule}: NOT updated — this module is read-only and
-   *   uses `config.keypair` for simulation fee sourcing. It does not hold
-   *   a wallet reference and is unaffected by `setWallet()`.
-   * - {@link GovernorModule}: NOT updated — this module is read-only and
-   *   uses `config.keypair` for simulation fee sourcing. It does not hold
-   *   a wallet reference and is unaffected by `setWallet()`.
-   *
-   * @throws {UnsupportedChainError} if the wallet's `chainId` is on a
-   *   different network than the one this client was initialised with.
-   */
-  /**
    * Pause an active stream (sender only).
    *
    * Freezes the stream clock so no new tokens accrue. The stream can be
@@ -128,6 +108,26 @@ export class ConduitClient {
     return this.streams.resume(streamId);
   }
 
+  /**
+   * Dynamically attach or change the active wallet adapter.
+   *
+   * Validates that the new wallet's chain matches the client's configured
+   * network before accepting it — prevents silent cross-chain mismatches
+   * from reaching the smart contract (fixes #157).
+   *
+   * **Wallet propagation contract:**
+   * - {@link StreamsModule}: Updated immediately — all subsequent stream
+   *   operations (create, withdraw, cancel, etc.) use the new wallet.
+   * - {@link FactoryModule}: NOT updated — this module is read-only and
+   *   uses `config.keypair` for simulation fee sourcing. It does not hold
+   *   a wallet reference and is unaffected by `setWallet()`.
+   * - {@link GovernorModule}: NOT updated — this module is read-only and
+   *   uses `config.keypair` for simulation fee sourcing. It does not hold
+   *   a wallet reference and is unaffected by `setWallet()`.
+   *
+   * @throws {UnsupportedChainError} if the wallet's `chainId` is on a
+   *   different network than the one this client was initialised with.
+   */
   setWallet(wallet: WalletAdapter): void {
     assertWalletNetworkMatch(wallet, this.config.network);
     this.config.wallet = wallet;
