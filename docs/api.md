@@ -631,3 +631,29 @@ new Module26(config?: Module26Config)
 * `clearCache(): void` — Clears the LRU cache and performance counters.
 * `getPerformanceMetrics(): Module26Metrics` — Returns `totalAggregations`, `cacheHits`, `cacheMisses`, `averageExecutionTimeMs`, and `measuredSpeedupPercent` (a real measurement derived from this instance's own accumulated hit/miss timings, `null` until both have occurred at least once — not a fixed assumed percentage).
 
+---
+
+## `Module48` (Feature #48)
+
+Streaming analytics and batch-evaluation engine implementing Feature #48. Uses a memoized lookup cache to avoid recomputing withdrawable/progress for repeated identical stream evaluations; actual speedup is workload-dependent (proportional to cache hit rate).
+
+### Constructor
+
+```typescript
+new Module48(config?: Module48Config)
+```
+
+| Option | Type | Default | Notes |
+|--------|------|---------|-------|
+| `cacheSize` | `number` | `1000` | Max entries in memoization cache |
+| `enableOptimization` | `boolean` | `true` | Enables memoized lookup caching |
+| `batchChunkSize` | `number` | `50` | Stream chunk size for batch processing |
+
+### Methods
+
+* `processSingleItem(item: StreamBatchItem): Module48Result` - Evaluates a stream's withdrawable balance and progress.
+* `processStreamBatch(items: StreamBatchItem[]): Module48Result[]` - Processes batch array of streams in chunks.
+* `computeOptimizedYield(ratePerSecond: bigint, durationSecs: number): bigint` - Fast BigInt yield calculation.
+* `clearCache(): void` - Clears the internal lookup cache and metrics.
+* `getPerformanceMetrics(): Module48Metrics` - Returns `totalProcessed`, `cacheHits`, `cacheMisses`, `averageExecutionTimeMs`, and `measuredSpeedupPercent` (a real measurement derived from this instance's own accumulated hit/miss timings, `null` until both have occurred at least once — not a fixed assumed percentage).
+

@@ -72,3 +72,11 @@ export type {
   PortfolioSummary,
   Module26Metrics,
 } from './module26.js';
+
+export { Module48 } from './module48.js';
+export type {
+  Module48Config,
+  StreamBatchItem,
+  Module48Result,
+  Module48Metrics,
+} from './module48.js';
