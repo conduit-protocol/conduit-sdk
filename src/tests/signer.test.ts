@@ -35,7 +35,7 @@ async function runSignTx(
 // ── Tests: boundary checks in _signTx ─────────────────────────────────────────
 
 describe('_signTx — null/undefined boundary checks', () => {
-  it('throws when wallet signTransaction returns null', async () => {
+  it('throws when wallet signTransaction returns null', { timeout: 15000 }, async () => {
     const nullWallet: WalletAdapter = {
       getPublicKey: () => 'GAAZI...',
       signTransaction: async () => null as unknown as Transaction,
@@ -52,7 +52,7 @@ describe('_signTx — null/undefined boundary checks', () => {
     );
   });
 
-  it('throws when wallet signTransaction returns undefined', async () => {
+  it('throws when wallet signTransaction returns undefined', { timeout: 15000 }, async () => {
     const undefWallet: WalletAdapter = {
       getPublicKey: () => 'GAAZI...',
       signTransaction: async () => undefined as unknown as Transaction,

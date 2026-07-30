@@ -186,12 +186,99 @@ export class ConduitError extends Error {
    * host traps don't carry one.
    */
   static fromSorobanMessage(contract: ConduitContract, message: string): Error {
+    // Check for WasmVm / InvalidAction which signals an insufficient balance
+    // on the Soroban host side (missing XLM for deposit + rent bump).
+    if (/Error\(WasmVm,\s*InvalidAction\)/.test(message)) {
+      return new InsufficientBalanceError(0n, 0n, message);
+    }
     const match = /Error\(Contract,\s*#(\d+)\)/.exec(message);
     if (!match || !match[1]) return new Error(message);
     const code = Number(match[1]);
     if (!(code in MESSAGES_BY_CONTRACT[contract])) return new Error(message);
     return new ConduitError(contract, code, `${MESSAGES_BY_CONTRACT[contract][code]} (${message})`);
   }
+}
+
+// ── Network error ──────────────────────────────────────────────────────────────
+
+/**
+ * Thrown when an RPC call fails due to a network-level error (e.g. Horizon /
+ * Soroban RPC is unreachable, DNS resolution failure, connection refused).
+ *
+ * Frontends can catch this and display a 'Network Offline' banner.
+ *
+ * @example
+ * ```ts
+ * try {
+ *   const stream = await client.streams.get(1n);
+ * } catch (err) {
+ *   if (err instanceof StreamFiNetworkError) {
+ *     console.warn('Network offline:', err.cause);
+ *   }
+ * }
+ * ```
+ */
+export class StreamFiNetworkError extends Error {
+  /** The underlying error that caused the network failure. */
+  readonly cause: unknown;
+
+  constructor(message: string, cause?: unknown) {
+    super(message);
+    this.name = 'StreamFiNetworkError';
+    this.cause = cause;
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
+
+// ── Insufficient balance error ────────────────────────────────────────────────
+
+/**
+ * Thrown when the user does not have enough XLM in their account to cover the
+ * deposit + rent bump (Soroban resource fees) required to create a stream.
+ *
+ * @example
+ * ```ts
+ * try {
+ *   const result = await client.streams.create({ ... });
+ * } catch (err) {
+ *   if (err instanceof InsufficientBalanceError) {
+ *     console.error(err.message); // 'You need at least 5.123 XLM to create this stream.'
+ *     console.error(err.currentBalance); // 1234567890n (in stroops)
+ *     console.error(err.requiredBalance); // 5123456789n (in stroops)
+ *   }
+ * }
+ * ```
+ */
+export class InsufficientBalanceError extends Error {
+  /** The account's current XLM balance in stroops. */
+  readonly currentBalance: bigint;
+  /** The minimum XLM balance required in stroops. */
+  readonly requiredBalance: bigint;
+
+  constructor(currentBalance: bigint, requiredBalance: bigint, detail?: string) {
+    const current = fromStroopsInternal(currentBalance, 7);
+    const required = fromStroopsInternal(requiredBalance, 7);
+    super(
+      detail
+        ? `You need at least ${required} XLM to create this stream (you have ${current} XLM). (${detail})`
+        : `You need at least ${required} XLM to create this stream (you have ${current} XLM).`,
+    );
+    this.name = 'InsufficientBalanceError';
+    this.currentBalance = currentBalance;
+    this.requiredBalance = requiredBalance;
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
+
+/**
+ * Minimal internal version of `fromStroops` to avoid a circular dependency
+ * with `utils.ts` (which imports StreamInfo type).
+ */
+function fromStroopsInternal(stroops: bigint, decimals: number): string {
+  const factor = BigInt(10 ** decimals);
+  const whole  = stroops / factor;
+  const frac   = (stroops % factor).toString().padStart(decimals, '0').replace(/0+$/, '') || '0';
+  return `${whole}.${frac}`;
 }
 
 

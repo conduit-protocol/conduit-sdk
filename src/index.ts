@@ -24,6 +24,9 @@ export {
   FactoryErrorCode,
   GovernorErrorCode,
   UnsupportedChainError,
+  StreamFiNetworkError,
+  InsufficientBalanceError,
+  RateLimitError,
   SUPPORTED_NETWORKS,
   UNKNOWN_CONTRACT_ERROR_CODE,
 } from './errors.js';

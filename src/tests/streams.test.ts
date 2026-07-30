@@ -28,6 +28,7 @@ vi.mock('../soroban.js', async () => {
   return {
     ...actual,
     buildContractCallTx: vi.fn().mockResolvedValue({ _stub: 'tx' }),
+    catchNetworkError:   <T>(_label: string, promise: Promise<T>) => promise,
   };
 });
 

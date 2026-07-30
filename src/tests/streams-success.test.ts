@@ -38,6 +38,8 @@ vi.mock('../soroban.js', async () => {
     ...actual,
     buildContractCallTx: vi.fn().mockResolvedValue({ _stub: 'tx' }),
     getTokenDecimals:    mockGetTokenDecimals,
+    getTokenDecimalsCached: mockGetTokenDecimals,
+    catchNetworkError:   <T>(_label: string, promise: Promise<T>) => promise,
   };
 });
 

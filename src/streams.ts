@@ -27,6 +27,9 @@ import {
   scValToU64,
   boolToScVal,
   getTokenDecimals,
+  catchNetworkError,
+  queryXlmBalance,
+  estimateRequiredFee,
   DEFAULT_RPC,
   NETWORK_PASSPHRASE,
   DEFAULT_CONFIRMATION_MAX_ATTEMPTS,
@@ -34,7 +37,7 @@ import {
   createRpcServer,
 } from './soroban.js';
 import { FactoryModule } from './factory.js';
-import { ConduitError, RateLimitError, StreamErrorCode } from './errors.js';
+import { ConduitError, RateLimitError, InsufficientBalanceError, StreamErrorCode } from './errors.js';
 
 // Deprecation warnings
 
@@ -228,10 +231,19 @@ export class StreamsModule {
 
     const tx     = await buildContractCallTx(this.rpcUrl, this.passphrase, senderAddr, factoryId, 'create_stream', args);
     const server = this._server();
-    const sim    = await server.simulateTransaction(tx);
+    const sim    = await catchNetworkError('simulateTransaction (create)', server.simulateTransaction(tx));
 
     if (SorobanRpc.Api.isSimulationError(sim)) {
-      throw ConduitError.fromSorobanMessage('factory', sim.error);
+      const err = ConduitError.fromSorobanMessage('factory', sim.error);
+      // If it's an InsufficientBalanceError with placeholder values, try to
+      // query the actual XLM balance and estimate the required fee.
+      if (err instanceof InsufficientBalanceError && err.currentBalance === 0n && err.requiredBalance === 0n) {
+        const xlmBalance = await queryXlmBalance(this.rpcUrl, this.passphrase, senderAddr).catch(() => 0n);
+        const requiredFee = estimateRequiredFee(sim);
+        const required = depositStroops + requiredFee;
+        throw new InsufficientBalanceError(xlmBalance, required, sim.error);
+      }
+      throw err;
     }
 
     const assembled = SorobanRpc.assembleTransaction(tx, sim).build();
@@ -350,7 +362,7 @@ export class StreamsModule {
     const caller = await this._getSenderAddress();
     const tx     = await buildContractCallTx(this.rpcUrl, this.passphrase, caller, addr, 'clawback', []);
     const server = this._server();
-    const sim    = await server.simulateTransaction(tx);
+    const sim    = await catchNetworkError('simulateTransaction (clawback)', server.simulateTransaction(tx));
 
     if (SorobanRpc.Api.isSimulationError(sim)) {
       throw ConduitError.fromSorobanMessage('stream', sim.error);
@@ -635,7 +647,7 @@ export class StreamsModule {
 
   private async _simulateTx(tx: Transaction): Promise<xdr.ScVal> {
     const server = this._server();
-    const result = await server.simulateTransaction(tx);
+    const result = await catchNetworkError('simulateTransaction', server.simulateTransaction(tx));
     if (SorobanRpc.Api.isSimulationError(result)) {
       throw ConduitError.fromSorobanMessage('stream', result.error);
     }
@@ -648,7 +660,7 @@ export class StreamsModule {
     const senderAddr = await this._getSenderAddress();
     const tx         = await buildContractCallTx(this.rpcUrl, this.passphrase, senderAddr, contractId, method, args);
     const server     = this._server();
-    const sim        = await server.simulateTransaction(tx);
+    const sim        = await catchNetworkError('simulateTransaction (invoke)', server.simulateTransaction(tx));
     if (SorobanRpc.Api.isSimulationError(sim)) {
       throw ConduitError.fromSorobanMessage('stream', sim.error);
     }
@@ -664,7 +676,7 @@ export class StreamsModule {
   ): Promise<{ hash: string; returnValue: xdr.ScVal | undefined }> {
     let sent;
     try {
-      sent = await server.sendTransaction(tx);
+      sent = await catchNetworkError('sendTransaction', server.sendTransaction(tx));
     } catch (err) {
       throw RateLimitError.fromRpcError(err) ?? err;
     }
@@ -678,7 +690,7 @@ export class StreamsModule {
       await sleep(pollIntervalMs);
       let s;
       try {
-        s = await server.getTransaction(hash);
+        s = await catchNetworkError('getTransaction', server.getTransaction(hash));
       } catch (err) {
         throw RateLimitError.fromRpcError(err) ?? err;
       }

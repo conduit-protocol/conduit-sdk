@@ -10,12 +10,14 @@ import {
   TransactionBuilder,
   Networks,
   Contract,
+  Address,
+  Asset,
   xdr,
   BASE_FEE,
 } from '@stellar/stellar-sdk';
 import type { Network } from './types/index.js';
 import type { Signer } from './signer.js';
-import { RateLimitError } from './errors.js';
+import { RateLimitError, StreamFiNetworkError, InsufficientBalanceError } from './errors.js';
 
 // ── RPC Server cache ─────────────────────────────────────────────────────────
 // Reusing SorobanRpc.Server instances avoids creating a new HTTP agent per
@@ -155,7 +157,7 @@ export async function buildContractCallTx(
 
   let account;
   try {
-    account = await server.getAccount(caller);
+    account = await catchNetworkError('getAccount', server.getAccount(caller));
   } catch (err) {
     throw RateLimitError.fromRpcError(err) ?? err;
   }
@@ -188,7 +190,7 @@ export async function invokeContract(
   // Simulate
   let simResult;
   try {
-    simResult = await server.simulateTransaction(tx);
+    simResult = await catchNetworkError('simulateTransaction (invoke)', server.simulateTransaction(tx));
   } catch (err) {
     throw RateLimitError.fromRpcError(err) ?? err;
   }
@@ -205,7 +207,7 @@ export async function invokeContract(
   // Submit
   let sent;
   try {
-    sent = await server.sendTransaction(assembled);
+    sent = await catchNetworkError('sendTransaction', server.sendTransaction(assembled));
   } catch (err) {
     throw RateLimitError.fromRpcError(err) ?? err;
   }
@@ -219,7 +221,7 @@ export async function invokeContract(
     await sleep(polling.pollIntervalMs);
     let status;
     try {
-      status = await server.getTransaction(hash);
+      status = await catchNetworkError('getTransaction', server.getTransaction(hash));
     } catch (err) {
       throw RateLimitError.fromRpcError(err) ?? err;
     }
@@ -245,7 +247,7 @@ export async function simulateReadOnly(
 
   let result;
   try {
-    result = await server.simulateTransaction(tx);
+    result = await catchNetworkError('simulateTransaction (readonly)', server.simulateTransaction(tx));
   } catch (err) {
     throw RateLimitError.fromRpcError(err) ?? err;
   }
@@ -340,4 +342,81 @@ export function boolToScVal(val: boolean): xdr.ScVal {
 
 function sleep(ms: number): Promise<void> {
   return new Promise(r => setTimeout(r, ms));
+}
+
+// ── Network error helpers ─────────────────────────────────────────────────────
+
+/**
+ * Catches an RPC-level error (e.g. `TypeError: fetch failed`) and re-throws it
+ * as a `StreamFiNetworkError` so callers can distinguish network outages from
+ * contract-logic failures.
+ */
+export function catchNetworkError<T>(label: string, promise: Promise<T>): Promise<T> {
+  return promise.catch((cause: unknown) => {
+    if (cause instanceof StreamFiNetworkError || cause instanceof InsufficientBalanceError) {
+      throw cause;
+    }
+    if (cause instanceof TypeError && /fetch|network|connect|refused|dns|econnrefused|enotfound|etimedout/i.test(String(cause))) {
+      throw new StreamFiNetworkError(`Network error during ${label}: ${(cause as Error).message}`, cause);
+    }
+    if (cause && typeof cause === 'object' && 'code' in cause) {
+      const code = String((cause as { code: unknown }).code);
+      if (/ECONNREFUSED|ENOTFOUND|ETIMEDOUT|ECONNRESET|ERR_CONN/i.test(code)) {
+        const message = cause instanceof Error ? cause.message : String(cause);
+        throw new StreamFiNetworkError(`Network error during ${label}: ${message}`, cause);
+      }
+    }
+    // Re-throw non-network errors as-is
+    throw cause;
+  });
+}
+
+// ── Account / balance helpers ──────────────────────────────────────────────────
+
+/**
+ * Query the native XLM balance of an account, in stroops (1 XLM =
+ * 10_000_000 stroops).
+ *
+ * Soroban RPC's getAccount() returns an XDR-level Account (sequence number
+ * etc.) with no `.balances` field -- that's a Horizon-only concept. Native
+ * XLM balance on Soroban is queried the same way any SEP-41 token balance
+ * is: simulate a `balance(id)` call against the native asset's Stellar
+ * Asset Contract.
+ */
+export async function queryXlmBalance(
+  rpcUrl: string,
+  passphrase: string,
+  accountId: string,
+): Promise<bigint> {
+  const nativeContractId = Asset.native().contractId(passphrase);
+  const tx = await buildContractCallTx(
+    rpcUrl, passphrase, accountId, nativeContractId, 'balance',
+    [new Address(accountId).toScVal()],
+  );
+  const val = await simulateReadOnly(rpcUrl, passphrase, tx);
+  return scValToI128(val);
+}
+
+/**
+ * Estimate the minimum resource fee required for a transaction simulation.
+ * If the simulation already failed with WasmVm, we return a lower bound based
+ * on typical Soroban contract call costs (this is a best-effort estimate).
+ */
+export function estimateRequiredFee(simResult: unknown, fallbackStroops = 5_000_000_000n): bigint {
+  if (simResult && typeof simResult === 'object') {
+    const r = simResult as { minResourceFee?: unknown; fee?: unknown };
+    // Try to extract minResourceFee from the simulation result. Note: an
+    // error-response simulation (the expected caller here, since this is
+    // only reached from within an isSimulationError() branch) carries
+    // neither field, so this intentionally falls through to the fallback.
+    if (r.minResourceFee !== undefined) {
+      const fee = BigInt(r.minResourceFee as string | number | bigint);
+      if (fee > 0n) return fee;
+    }
+    if (r.fee !== undefined) {
+      const fee = BigInt(r.fee as string | number | bigint);
+      if (fee > 0n) return fee;
+    }
+  }
+  return fallbackStroops; // ~500 XLM default upper-bound estimate
 }
