@@ -19,6 +19,13 @@ new ConduitClient(config: ConduitConfig)
 | `rpcUrl` | `string` | | Network default |
 | `factoryAddress` | `string` | | Deployed factory |
 | `governorAddress` | `string` | | Deployed governor |
+| `wallet` | `WalletAdapter` | | — |
+
+### Convenience methods
+
+* `pauseStream(streamId: string) → Promise<string>` — equivalent to `client.streams.pause(streamId)`.
+* `unpauseStream(streamId: string) → Promise<string>` — equivalent to `client.streams.resume(streamId)`.
+* `setWallet(wallet: WalletAdapter): void` — dynamically attach or change the active wallet adapter. Throws `UnsupportedChainError` if the wallet's `chainId` is on a different network than the client was configured for. See [Wallet Adapters](#wallet-adapters) below. Only propagates to `client.streams` — `client.factory` and `client.governor` are read-only and use `config.keypair` for simulation fee sourcing, so they are unaffected.
 
 ---
 

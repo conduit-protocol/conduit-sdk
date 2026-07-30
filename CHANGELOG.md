@@ -15,6 +15,7 @@ All notable changes are documented here. Format based on [Keep a Changelog](http
 ### Documentation
 - Added an API reference section for `GraphQLIndexer`, which was previously exported but undocumented.
 - Added a "Wallet Adapters" API reference section documenting `KeypairWalletAdapter`.
+- Documented `ConduitClient`'s `pauseStream()`, `unpauseStream()`, and `setWallet()` convenience methods in `docs/api.md`, and fixed `setWallet()`'s JSDoc block, which had been orphaned above `pauseStream()`/`unpauseStream()` and left `setWallet()` itself undocumented.
 
 ### Fixed
 - **Critical:** `FeeEstimator.estimateFee()` now uses `bigint` stroops instead of floating-point for fee representation, eliminating IEEE-754 precision loss. All monetary amounts in the SDK now consistently use bigint to avoid rounding errors.
