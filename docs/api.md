@@ -295,9 +295,12 @@ clearServerCache();
 ```
 
 > **Internal usage:** All SDK functions that interact with the Soroban RPC (`buildContractCallTx`,
-> `simulateReadOnly`, `invokeContract`, `StreamsModule`, `subscribeToStream`, etc.) use
-> `getServer` internally. You do not need to call it yourself unless you are using the low-level
-> Soroban helpers directly.
+> `simulateReadOnly`, `invokeContract`, `StreamsModule`, `subscribeToStream`, etc.) build their
+> server through an internal wrapper that calls `getServer` for the cached instance and adds
+> automatic retry-with-backoff on rate-limit errors (HTTP 429/503). Calling `getServer` yourself
+> gives you the cached-but-unwrapped instance — no automatic retry — so you do not need to call
+> it yourself unless you are using the low-level Soroban helpers directly and want to manage
+> retries on your own.
 
 ---
 

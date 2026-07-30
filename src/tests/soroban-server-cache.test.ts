@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { SorobanRpc, xdr } from '@stellar/stellar-sdk';
+import { SorobanRpc } from '@stellar/stellar-sdk';
 import { getServer, clearServerCache } from '../soroban.js';
 
 // ---------------------------------------------------------------------------
