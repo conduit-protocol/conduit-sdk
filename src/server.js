@@ -19,4 +19,8 @@ function handleJoin(clientId, roomId, ws) {
   return result;
 }
 
-module.exports = { handleJoin, roomManager };
+function handleClose(clientId) {
+  roomManager.leaveAll(clientId);
+}
+
+module.exports = { handleJoin, handleClose, roomManager };

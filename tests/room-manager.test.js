@@ -1,6 +1,6 @@
-const { expect, test, describe } = require('vitest');
-const { RoomManager } = require('../src/room-manager');
-const { handleJoin, roomManager } = require('../src/server');
+import { expect, test, describe } from 'vitest';
+import { RoomManager } from '../src/room-manager.js';
+import { handleJoin, handleClose, roomManager } from '../src/server.js';
 
 describe('RoomManager', () => {
   test('join under capacity returns ok: true', () => {
@@ -47,5 +47,45 @@ describe('RoomManager', () => {
         code: "ROOM_FULL"
       }
     }));
+  });
+
+  test('leaveAll removes a client from every room it joined', () => {
+    const manager = new RoomManager({ maxRoomSize: 5 });
+    const ws = { send: () => {} };
+
+    manager.join('client1', 'roomA', ws);
+    manager.join('client1', 'roomB', ws);
+    manager.join('client1', 'roomC', ws);
+    manager.join('client2', 'roomA', ws);
+
+    manager.leaveAll('client1');
+
+    expect(manager._clientRooms.has('client1')).toBe(false);
+    expect(manager._rooms.get('roomA').has('client1')).toBe(false);
+    expect(manager._rooms.get('roomB')).toBeUndefined();
+    expect(manager._rooms.get('roomC')).toBeUndefined();
+    // client2 is untouched
+    expect(manager._rooms.get('roomA').has('client2')).toBe(true);
+  });
+
+  test('leaveAll on an unknown client is a no-op', () => {
+    const manager = new RoomManager({ maxRoomSize: 5 });
+    expect(() => manager.leaveAll('ghost')).not.toThrow();
+  });
+
+  test('handleClose disconnects a client from all rooms via the shared roomManager', () => {
+    roomManager._maxRoomSize = 5;
+    roomManager._rooms.clear();
+    roomManager._clientRooms.clear();
+
+    const ws = { send: () => {} };
+    handleJoin('client1', 'room1', ws);
+    handleJoin('client1', 'room2', ws);
+
+    handleClose('client1');
+
+    expect(roomManager._clientRooms.has('client1')).toBe(false);
+    expect(roomManager._rooms.has('room1')).toBe(false);
+    expect(roomManager._rooms.has('room2')).toBe(false);
   });
 });
