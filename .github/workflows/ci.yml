@@ -57,3 +57,25 @@ jobs:
 
       - name: Verify dist
         run: node -e "require('./dist/cjs/index.js')"
+
+  react-package:
+    name: "@streamfi/react"
+    runs-on: ubuntu-latest
+    needs: [build]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: packages/react/package-lock.json
+
+      - run: npm ci
+      - run: npm run build
+      - run: npm ci
+        working-directory: packages/react
+      - run: npm run typecheck
+        working-directory: packages/react
+      - run: npm test
+        working-directory: packages/react
