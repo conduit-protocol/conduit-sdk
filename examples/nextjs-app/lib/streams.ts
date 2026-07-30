@@ -1,3 +1,10 @@
+'use server';
+
+// Server Actions: this file's exported functions run only on the server, so
+// getClient()'s signing keypair (loaded from a non-NEXT_PUBLIC_ env var)
+// never gets bundled into client-side JavaScript. Do not import getClient()
+// or the underlying signing keypair from any 'use client' component directly.
+
 import { getClient } from './conduit';
 import type { PaginatedStreams, CreateStreamParams, CreateStreamResult } from '@conduit-protocol/sdk';
 

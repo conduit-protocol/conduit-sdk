@@ -28,7 +28,7 @@ Edit `.env.local`:
 
 | Variable | Description |
 |----------|-------------|
-| `NEXT_PUBLIC_STELLAR_SECRET` | Secret key for signing transactions (optional for read-only) |
+| `STELLAR_SECRET` | Secret key for signing transactions (optional for read-only). Deliberately **not** `NEXT_PUBLIC_`-prefixed — it's only read inside Server Actions (`lib/streams.ts`), never bundled to the client. Never add the `NEXT_PUBLIC_` prefix to this variable. |
 | `NEXT_PUBLIC_NETWORK` | `testnet` (default), `mainnet`, or `local` |
 | `NEXT_PUBLIC_ADDRESS` | Default address to query streams for |
 

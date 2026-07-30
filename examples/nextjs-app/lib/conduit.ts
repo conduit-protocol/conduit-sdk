@@ -8,7 +8,12 @@ function getNetwork(): 'mainnet' | 'testnet' | 'local' {
 }
 
 function getKeypair(): Keypair | undefined {
-  const secret = process.env.NEXT_PUBLIC_STELLAR_SECRET;
+  // Deliberately NOT NEXT_PUBLIC_-prefixed: that prefix tells Next.js to
+  // inline the value into the client-side JS bundle, which would ship this
+  // signing secret to every browser that loads the page. getClient() is only
+  // ever called from Server Actions ('use server' in lib/streams.ts), so a
+  // server-only env var is both correct and safe here.
+  const secret = process.env.STELLAR_SECRET;
   if (!secret) return undefined;
   return Keypair.fromSecret(secret);
 }

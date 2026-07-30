@@ -8,7 +8,7 @@
     "start": "next start"
   },
   "dependencies": {
-    "@conduit-protocol/sdk": "workspace:*",
+    "@conduit-protocol/sdk": "file:../..",
     "@stellar/stellar-sdk": "^12.0.0",
     "next": "^14.2.0",
     "react": "^18.3.0",
