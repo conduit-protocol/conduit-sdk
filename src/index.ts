@@ -41,6 +41,7 @@ export {
   toStroops,
   fromStroops,
   calculateRate,
+  calculateYield,
   streamProgress,
   withdrawableLocal,
   bigintSafeStringify,

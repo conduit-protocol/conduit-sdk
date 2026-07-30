@@ -38,6 +38,25 @@ export function calculateRate(depositAmount: string, durationSecs: number, decim
 }
 
 /**
+ * Calculate the total yield (streamed amount) over a given duration.
+ *
+ * Uses BigInt throughout to avoid precision loss with large amounts.
+ * Returns a formatted display string with 7 decimal places.
+ *
+ * @param ratePerSecond  Stream rate in stroops per second
+ * @param durationSecs   Duration in seconds (default 1 year = 31,536,000)
+ * @param decimals       Token decimal places (default 7 for Stellar assets)
+ */
+export function calculateYield(
+  ratePerSecond: bigint,
+  durationSecs = 31_536_000,
+  decimals = 7,
+): string {
+  const totalStroops = ratePerSecond * BigInt(durationSecs);
+  return fromStroops(totalStroops, decimals);
+}
+
+/**
  * Current progress fraction (0-1) of a stream.
  * Returns 0 if not started, 1 if ended, and NaN for open-ended streams
  * that have started but do not have a finite completion percentage.

@@ -3,6 +3,7 @@ import {
   toStroops,
   fromStroops,
   calculateRate,
+  calculateYield,
   streamProgress,
   withdrawableLocal,
   bigintSafeStringify,
@@ -97,6 +98,53 @@ describe('calculateRate', () => {
 
   it('returns 0 for zero duration', () => {
     expect(calculateRate('1000', 0)).toBe(0n);
+  });
+});
+
+// ── calculateYield ───────────────────────────────────────────────────────────
+
+describe('calculateYield', () => {
+  it('returns 0 for zero rate', () => {
+    expect(calculateYield(0n)).toBe('0.0');
+  });
+
+  it('computes annual yield from rate per second', () => {
+    // 1000 stroops/s * 31,536,000 s = 31,536,000,000 stroops = 3153.6 XLM
+    const result = calculateYield(1000n);
+    expect(result).toBe('3153.6');
+  });
+
+  it('uses custom duration', () => {
+    // 1000 stroops/s * 86400 s (1 day) = 86,400,000 stroops = 8.64 XLM
+    const result = calculateYield(1000n, 86400);
+    expect(result).toBe('8.64');
+  });
+
+  it('handles large amounts without precision loss', () => {
+    // 100,000,000 XLM = 10^15 stroops, deposited for 30 days (2,592,000 s)
+    // rate = 10^15 / 2,592,000 ≈ 385,802,469 stroops/s (rounded)
+    const rate = calculateRate('100000000', 2_592_000);
+    // Annual yield = rate * 31,536,000
+    const result = calculateYield(rate);
+    // Reconstruct expected with BigInt to verify
+    const expectedStroops = rate * 31_536_000n;
+    const expected = fromStroops(expectedStroops);
+    expect(result).toBe(expected);
+    // Should be substantially less
+    expect(result).not.toBe('0.0');
+  });
+
+  it('handles very large rates beyond Number.MAX_SAFE_INTEGER', () => {
+    // rate of 10^15 stroops/s for 1 year → 3.1536e22 stroops
+    const rate = 1_000_000_000_000_000n; // 10^15 stroops/s
+    const result = calculateYield(rate);
+    // 10^15 * 31,536,000 = 3.1536e22 stroops = 3,153,600,000,000,000 XLM
+    expect(result).toContain('3153600000000000');
+  });
+
+  it('works with short durations', () => {
+    // 100 stroops/s * 1 second = 100 stroops = 0.00001 XLM
+    expect(calculateYield(100n, 1)).toBe('0.00001');
   });
 });
 
