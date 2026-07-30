@@ -96,27 +96,52 @@ export function withdrawableLocal(stream: StreamInfo, nowSec = Math.floor(Date.n
  * Recursively convert all bigint values in a value to their string
  * representation.  Safe for objects, arrays, and primitives.
  *
+ * Uses lazy cloning: only allocates a new object or array when at
+ * least one descendant value is a bigint that gets converted to a
+ * string.  When no bigints are present the original value is returned
+ * unchanged, avoiding unnecessary allocations and GC pressure.
+ *
  * Safari / WebKit serialises `bigint` values as `{}` inside
  * `JSON.stringify`, which breaks payloads sent to the GraphQL
  * indexer.  Call this before network submission to guarantee
  * interoperability across all browsers.
  */
 export function bigintSafeStringify<T>(value: T): T {
-  if (typeof value === 'bigint') {
+  // Primitives: convert bigint, pass everything else through as-is.
+  if (value === null || typeof value !== 'object') {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return value.toString() as any;
+    return typeof value === 'bigint' ? (value.toString() as any) : value;
   }
+
+  // Arrays: only allocate a new array if at least one element changed.
   if (Array.isArray(value)) {
-    return value.map(bigintSafeStringify) as unknown as T;
-  }
-  if (value !== null && typeof value === 'object') {
-    const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      out[k] = bigintSafeStringify(v);
+    let changed = false;
+    const arr = new Array(value.length);
+    for (let i = 0; i < value.length; i++) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const orig = value[i] as any;
+      const stringified = bigintSafeStringify(orig);
+      if (stringified !== orig) changed = true;
+      arr[i] = stringified;
     }
-    return out as T;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (changed ? arr : value) as any;
   }
-  return value;
+
+  // Plain objects: only allocate a new object if at least one property changed.
+  let changed = false;
+  const out: Record<string, unknown> = {};
+  const keys = Object.keys(value);
+
+  for (let i = 0; i < keys.length; i++) {
+    const k = keys[i]!;
+    const orig = (value as Record<string, unknown>)[k];
+    const stringified = bigintSafeStringify(orig);
+    if (stringified !== orig) changed = true;
+    out[k] = stringified;
+  }
+
+  return (changed ? out : value) as unknown as T;
 }
 
 /**

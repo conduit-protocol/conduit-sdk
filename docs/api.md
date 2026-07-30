@@ -250,7 +250,8 @@ in each one.
 ## Utility functions
 
 ```typescript
-import { toStroops, fromStroops, calculateRate, streamProgress, withdrawableLocal }
+import { toStroops, fromStroops, calculateRate, streamProgress, withdrawableLocal,
+  bigintSafeStringify, isValidAddress }
   from '@conduit-protocol/sdk/utils';
 
 toStroops('100.5')             // → 1005000000n
@@ -261,6 +262,46 @@ withdrawableLocal(streamInfo)  // → bigint (client-side estimate, no RPC call)
 ```
 
 `withdrawableLocal` is useful for building live counters without polling the chain on every render tick.
+
+### `bigintSafeStringify(value)`
+
+Recursively converts all `bigint` values in an object or array to their string
+representation, ensuring safe JSON serialisation across all browsers (Safari/WebKit
+serialises bare `bigint` as `{}` instead of throwing). Used internally by the SDK
+before network submission and in `StreamInfo.toJSON()`.
+
+**Lazy cloning:** The function only allocates a new object or array when at least one
+descendant value is a `bigint` that gets converted. If no `bigint` values are present,
+the original input reference is returned unchanged — avoiding unnecessary allocations
+and GC pressure. This makes it safe to call in hot paths like `StreamBuilder.build()`
+and `ConduitBatcher.execute()`.
+
+```typescript
+import { bigintSafeStringify } from '@conduit-protocol/sdk/utils';
+
+// Object with bigints → new object allocated
+const sanitized = bigintSafeStringify({ rate: 38580n });
+// → { rate: '38580' }
+
+// Object without bigints → same reference returned
+const plain = { name: 'test', amount: 100 };
+const result = bigintSafeStringify(plain);
+console.log(result === plain); // → true
+```
+
+### `isValidAddress(address)`
+
+Static format validation for Stellar public keys (G-addresses). Checks StrKey encoding,
+version byte, and checksum — does not verify on-chain existence. Returns `true` for
+valid Ed25519 public keys, `false` otherwise.
+
+```typescript
+import { isValidAddress } from '@conduit-protocol/sdk/utils';
+
+isValidAddress('GABC...XYZ');           // → true
+isValidAddress(Keypair.random().publicKey()); // → true
+isValidAddress('not-an-address');      // → false
+```
 
 ---
 

@@ -314,6 +314,126 @@ describe('bigintSafeStringify', () => {
     expect(json.ratePerSecond).toBe('9007199254740993');
     expect(json.deposit).toBe('50000');
   });
+
+  // ── Lazy cloning / reference identity tests ──────────────────────────────
+
+  it('returns the same array reference when no bigints are present', () => {
+    const input = [1, 'two', 3.14, null, undefined, true];
+    const result = bigintSafeStringify(input);
+    expect(result).toBe(input); // same reference — no allocation
+  });
+
+  it('returns the same object reference when no bigints are present', () => {
+    const input = { a: 1, b: 'two', c: 3.14, d: null, e: undefined, f: true };
+    const result = bigintSafeStringify(input);
+    expect(result).toBe(input); // same reference — no allocation
+  });
+
+  it('returns the same deeply-nested object reference when no bigints', () => {
+    const inner = { x: 1, y: 2 };
+    const input = { a: { b: inner }, c: [1, 2, 3] };
+    const result = bigintSafeStringify(input);
+    expect(result).toBe(input); // top-level is unchanged
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((result as any).a.b).toBe(inner); // deeply nested is also unchanged
+  });
+
+  it('allocates a new array when a bigint is present', () => {
+    const input = [1, 2n, 3];
+    const result = bigintSafeStringify(input);
+    expect(result).not.toBe(input); // new array allocated
+    expect(result).toEqual([1, '2', 3]);
+  });
+
+  it('allocates a new object when a bigint is present', () => {
+    const input = { a: 1, b: 2n };
+    const result = bigintSafeStringify(input);
+    expect(result).not.toBe(input); // new object allocated
+    expect(result).toEqual({ a: 1, b: '2' });
+  });
+
+  it('allocates a new parent but keeps unchanged child references intact', () => {
+    const child = { x: 1, y: 2 };
+    const input = { a: child, b: 100n };
+    const result = bigintSafeStringify(input);
+    expect(result).not.toBe(input); // parent changed
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((result as any).a).toBe(child); // child unchanged — same reference
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((result as any).b).toBe('100');
+  });
+
+  it('handles empty objects', () => {
+    const input = {};
+    const result = bigintSafeStringify(input);
+    expect(result).toBe(input); // no allocation
+  });
+
+  it('handles empty arrays', () => {
+    const input: unknown[] = [];
+    const result = bigintSafeStringify(input);
+    expect(result).toBe(input); // no allocation
+  });
+
+  it('handles Date objects (non-plain objects pass through)', () => {
+    const input = new Date('2024-01-01');
+    const result = bigintSafeStringify(input);
+    // Dates are typeof 'object' and non-null, so they go through the
+    // Object.keys path, enumerating own properties (which a Date has none).
+    // The result should be an empty plain object if no own enum keys exist,
+    // or the original Date if we return it unchanged (no bigints found).
+    // Since Date has no own enumerable string keys, the loop is empty and no
+    // bigints are found → returns the original Date unchanged.
+    expect(result).toBe(input);
+  });
+
+  it('survives multiple round-trips (idempotent)', () => {
+    const input = { a: 1n, b: { c: 2n } };
+    const first = bigintSafeStringify(input) as Record<string, unknown>;
+    const second = bigintSafeStringify(first);
+    // Second pass: no bigints remain, so reference should be preserved
+    expect(second).toBe(first);
+    expect(second).toEqual({ a: '1', b: { c: '2' } });
+  });
+
+  it('handles bigints in mixed nested structures efficiently', () => {
+    const input = {
+      streamId: '42',
+      info: {
+        ratePerSecond: 38580n,
+        withdrawn: 0n,
+        paused: false,
+        metadata: { name: 'test', active: true },
+      },
+    };
+    const result = bigintSafeStringify(input) as typeof input;
+    expect(result.info.ratePerSecond).toBe('38580');
+    expect(result.info.withdrawn).toBe('0');
+    // Non-bigint sub-object returned as-is (reference preserved)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((result as any).info.metadata).toBe(input.info.metadata);
+  });
+
+  it('handles arrays with bigint at various positions', () => {
+    const input = [1, 'two', 3n, 4, 5n];
+    const result = bigintSafeStringify(input) as unknown[];
+    expect(result).toEqual([1, 'two', '3', 4, '5']);
+    // Elements without bigint should be reference-equal
+    expect(result[0]).toBe(input[0]);
+    expect(result[1]).toBe(input[1]);
+    expect(result[3]).toBe(input[3]);
+  });
+
+  it('preserves undefined inside objects', () => {
+    const input = { a: undefined, b: 1n };
+    const result = bigintSafeStringify(input) as Record<string, unknown>;
+    expect(result.a).toBeUndefined();
+    expect(result.b).toBe('1');
+    // JSON.stringify should skip undefined (standard behavior)
+    const json = JSON.parse(JSON.stringify(result));
+    expect(json.b).toBe('1');
+    expect('a' in json).toBe(false);
+  });
 });
 
 // -- isValidAddress -----------------------------------------------------------
