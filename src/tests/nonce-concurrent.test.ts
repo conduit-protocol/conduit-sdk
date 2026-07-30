@@ -144,4 +144,38 @@ describe('NonceManager — Concurrent Nonce Integration Tests', () => {
     expect(lock3.nonce).toBe(0n);
     lock3.release();
   });
+
+  it('clamps maxNonce to MAX_SAFE_U64', () => {
+    const m = new NonceManager({ startNonce: 0n, maxNonce: 100000000000000000000n });
+    expect(m.remaining).toBe(18446744073709551615n);
+    m.destroy();
+  });
+
+  it('falls back to 0n for invalid string nonce', () => {
+    const m = new NonceManager({ startNonce: 'invalid', maxNonce: '100' });
+    expect(m.current).toBe(0n);
+    m.destroy();
+  });
+
+  it('queues acquire when locked', async () => {
+    const m = new NonceManager({ startNonce: 0n, maxNonce: 100n });
+    const lock1 = await m.acquire();
+    let lock2: NonceLock | undefined;
+    const acquirePromise = m.acquire().then(l => { lock2 = l; });
+    await new Promise(r => setTimeout(r, 0));
+    expect((m as any).lockQueue.length).toBe(1);
+    lock1.release();
+    await acquirePromise;
+    expect(lock2!.nonce).toBe(1n);
+    lock2!.release();
+    m.destroy();
+  });
+
+  it('acquireWithFallback times out', async () => {
+    const m = new NonceManager({ startNonce: 0n, maxNonce: 100n });
+    const lock = await m.acquire();
+    await expect(m.acquireWithFallback(10)).rejects.toThrow('timed out');
+    lock.release();
+    m.destroy();
+  });
 });

@@ -2,6 +2,18 @@ import type { Signer } from '../signer.js';
 
 export type Network = 'mainnet' | 'testnet' | 'local';
 
+/** Configuration returned by StreamBuilder.build() */
+export interface StreamConfig {
+  token: string;
+  sender: string;
+  recipient: string;
+  amount: number;
+  ratePerSecond?: string;
+}
+
+/** A Stellar account address (G... string) */
+export type Recipient = string;
+
 export interface ConduitConfig {
   /** Network to connect to */
   network: Network;
@@ -45,6 +57,9 @@ export interface StreamInfo {
   cancelled:       boolean;
   clawbackEnabled: boolean;
 }
+
+/** On-chain state of a stream — alias for StreamInfo */
+export type StreamState = StreamInfo;
 
 export interface CreateStreamParams {
   /** Stellar recipient address */

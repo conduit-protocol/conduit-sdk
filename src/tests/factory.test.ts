@@ -111,6 +111,15 @@ describe('FactoryModule — streamAddress()', () => {
     const addr = await new FactoryModule(cfg()).streamAddress(999n);
     expect(addr).toBeNull();
   });
+
+  it('returns address string for non-void result', async () => {
+    const { FactoryModule } = await import('../factory.js');
+    mockSimulate.mockResolvedValueOnce(_xdr.ScVal.scvU32(1));
+
+    const addr = await new FactoryModule(cfg()).streamAddress(1n);
+    expect(typeof addr).toBe('string');
+  });
+
 });
 
 describe('FactoryModule — protocolFeeBps()', () => {

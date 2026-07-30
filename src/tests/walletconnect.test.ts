@@ -193,4 +193,37 @@ describe('KeypairWalletAdapter', () => {
     expect(signedTx).toBeInstanceOf(Transaction);
     expect((signedTx as Transaction).signatures.length).toBe(1);
   });
+
+  it('signs a raw XDR string with network passphrase', async () => {
+    const keypair = Keypair.random();
+    const adapter = new KeypairWalletAdapter(keypair);
+
+    const account = new Account(keypair.publicKey(), '100');
+    const tx = new TransactionBuilder(account, {
+      fee: BASE_FEE,
+      networkPassphrase: Networks.TESTNET,
+    })
+      .setTimeout(30)
+      .build();
+    const xdr = tx.toXDR();
+
+    const signed = await adapter.signTransaction(xdr, { networkPassphrase: Networks.TESTNET });
+    expect(typeof signed).toBe('string');
+  });
+
+  it('throws when signing raw XDR without networkPassphrase', async () => {
+    const keypair = Keypair.random();
+    const adapter = new KeypairWalletAdapter(keypair);
+
+    const account = new Account(keypair.publicKey(), '100');
+    const tx = new TransactionBuilder(account, {
+      fee: BASE_FEE,
+      networkPassphrase: Networks.TESTNET,
+    })
+      .setTimeout(30)
+      .build();
+    const xdr = tx.toXDR();
+
+    await expect(adapter.signTransaction(xdr)).rejects.toThrow('networkPassphrase');
+  });
 });

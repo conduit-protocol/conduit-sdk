@@ -16,7 +16,7 @@ import type {
   TopUpEvent,
   ClawbackEvent,
 } from './types/index.js';
-import { scValToI128, scValToU64 } from './soroban.js';
+import { scValToI128, scValToU64, getServer } from './soroban.js';
 
 // ── Event topic names (match symbol_short!() values in Rust) ─────────────────
 
@@ -81,7 +81,7 @@ export function subscribeToStream(
   streamAddress: string,
   handlers:      StreamEventHandlers,
 ): Subscription {
-  const server       = new SorobanRpc.Server(rpcUrl, { allowHttp: rpcUrl.startsWith('http://') });
+  const server       = getServer(rpcUrl);
   const pollInterval = handlers.pollInterval ?? 5000;
   let   startLedger  = 0;  // updated after each successful poll
   let   stopped      = false;

@@ -55,7 +55,7 @@ export class StreamBuilder {
   private _amount?: number | undefined;
   private _ratePerSecond?: number | bigint | undefined;
 
-  private pendingQueue: Array<Record<string, unknown>> = [];
+  private pendingQueue: Set<Record<string, unknown>> = new Set();
   private activeTimers: Set<NodeJS.Timeout> = new Set();
   private isDestroyed = false;
   private _semaphore: Semaphore;
@@ -189,7 +189,7 @@ export class StreamBuilder {
     }
 
     // Backpressure: reject if queue is full
-    if (this.pendingQueue.length >= this._maxQueueSize) {
+    if (this.pendingQueue.size >= this._maxQueueSize) {
       throw new Error(
         `StreamBuilder queue is full (${this._maxQueueSize} pending). ` +
         'Retry later or increase maxQueueSize.'
@@ -197,7 +197,8 @@ export class StreamBuilder {
     }
 
     const payload = this.build();
-    this.pendingQueue.push(payload as unknown as Record<string, unknown>);
+    const payloadRecord = payload as unknown as Record<string, unknown>;
+    this.pendingQueue.add(payloadRecord);
 
     const maxRetries = options.maxRetries ?? 3;
     const baseRetryDelay = options.retryDelayMs ?? 100;
@@ -217,11 +218,8 @@ export class StreamBuilder {
         }
 
         try {
-          const result = await submitFn(payload as unknown as Record<string, unknown>);
-          const index = this.pendingQueue.indexOf(payload as unknown as Record<string, unknown>);
-          if (index !== -1) {
-            this.pendingQueue.splice(index, 1);
-          }
+          const result = await submitFn(payloadRecord);
+          this.pendingQueue.delete(payloadRecord);
           return result;
         } catch (err) {
           if (signal?.aborted) {
@@ -273,7 +271,7 @@ export class StreamBuilder {
       clearTimeout(timer);
     }
     this.activeTimers.clear();
-    this.pendingQueue = [];
+    this.pendingQueue.clear();
   }
 
   private static _validateAddress(address: string, field: string): string {

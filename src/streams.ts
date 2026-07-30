@@ -70,6 +70,7 @@ export class StreamsModule {
   private readonly passphrase: string;
   private readonly callerAddr: string;
   private readonly _factory:   FactoryModule;
+  private _cachedServer?:     SorobanRpc.Server;
   private activeWallet?:       WalletAdapter;
 
   constructor(private readonly config: ConduitConfig) {
@@ -466,7 +467,12 @@ export class StreamsModule {
   }
 
   private _server(): SorobanRpc.Server {
-    return new SorobanRpc.Server(this.rpcUrl, { allowHttp: this.rpcUrl.startsWith('http://') });
+    if (!this._cachedServer) {
+      this._cachedServer = new SorobanRpc.Server(this.rpcUrl, {
+        allowHttp: this.rpcUrl.startsWith('http://'),
+      });
+    }
+    return this._cachedServer;
   }
 
   private async _resolveAddr(id: bigint): Promise<string> {

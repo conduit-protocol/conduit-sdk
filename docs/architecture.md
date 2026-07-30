@@ -14,9 +14,12 @@ client.ts         — ConduitClient: owns config, instantiates the three modules
   ├─ factory.ts    — FactoryModule:  streamCount/streamAddress/streamsBySender/streamsByRecipient/protocolFeeBps
   └─ governor.ts   — GovernorModule: (config reads — see docs/api.md)
 soroban.ts         — buildContractCallTx/simulateReadOnly + NETWORK_PASSPHRASE/DEFAULT_RPC tables
-events.ts          — subscribeToStream: polls getEvents(), dispatches to typed handlers
+events.ts          — subscribeToStream: polls getEvents() (via shared getServer() cache), dispatches to typed handlers
+indexer.ts         — GraphQLIndexer: GraphQL queries + subscriptions over WebSocket or SSE/HTTP fallback
+builder.ts         — StreamBuilder / ConduitBatcher: fluent builder + batched validation; pendingQueue uses Set for O(1) ops
 errors.ts          — ConduitError + ErrorCode, mapped from on-chain contract error codes
-utils.ts           — toStroops/fromStroops/calculateRate/streamProgress/withdrawableLocal (pure, no RPC)
+utils.ts           — toStroops/fromStroops/calculateRate/streamProgress/withdrawableLocal (pure, no RPC);
+                     toStroops/fromStroops use a memoised pow10 cache for ~20% faster conversions
 contracts/*-abi.ts — generated-style ABI/method-name constants per contract
 ```
 

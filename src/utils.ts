@@ -1,22 +1,49 @@
 import type { StreamInfo } from './types/index.js';
 import { StrKey } from '@stellar/stellar-sdk';
 
-/** Convert a display amount string to stroops (bigint) */
+const _powCache: Record<number, bigint> = {};
+
+function _pow10(decimals: number): bigint {
+  let p = _powCache[decimals];
+  if (!p) {
+    p = BigInt(10) ** BigInt(decimals);
+    _powCache[decimals] = p;
+  }
+  return p;
+}
+
+/** Convert a display amount string to stroops (bigint).
+ *
+ *  Cache-friendly — `10 ** decimals` is computed once per unique `decimals`
+ *  value and reused across calls, avoiding repeated BigInt exponentiation.
+ */
 export function toStroops(amount: string, decimals = 7): bigint {
-  const [whole = '0', frac = ''] = amount.split('.');
-  const fracPadded = frac.slice(0, decimals + 1).padEnd(decimals + 1, '0');
-  const fracValue = BigInt(fracPadded);
-  const roundingDigit = Number(fracPadded[decimals] ?? '0');
-  const roundedFrac = roundingDigit >= 5 ? fracValue / 10n + 1n : fracValue / 10n;
-  return BigInt(whole) * BigInt(10 ** decimals) + roundedFrac;
+  const dot = amount.indexOf('.');
+  if (dot === -1) {
+    return BigInt(amount) * _pow10(decimals);
+  }
+  const whole = amount.slice(0, dot) || '0';
+  const frac  = amount.slice(dot + 1, dot + 1 + decimals);
+  const rest  = amount.slice(dot + 1 + decimals);
+
+  let base = BigInt(whole) * _pow10(decimals) + BigInt(frac.padEnd(decimals, '0'));
+  if (rest) {
+    const roundingDigit = rest.charCodeAt(0) /* '0' … '9' */;
+    if (roundingDigit >= 53 /* charCode of '5' */) {
+      base += 1n;
+    }
+  }
+  return base;
 }
 
 /** Convert stroops (bigint) to a display amount string */
 export function fromStroops(stroops: bigint, decimals = 7): string {
-  const factor  = BigInt(10 ** decimals);
-  const whole   = stroops / factor;
-  const frac    = (stroops % factor).toString().padStart(decimals, '0');
-  const trimmed = frac.replace(/0+$/, '') || '0';
+  const factor = _pow10(decimals);
+  const whole  = stroops / factor;
+  const frac   = (stroops % factor).toString().padStart(decimals, '0');
+  let end = frac.length;
+  while (end > 0 && frac.charCodeAt(end - 1) === 48 /* '0' */) end--;
+  const trimmed = end === 0 ? '0' : frac.slice(0, end);
   return `${whole}.${trimmed}`;
 }
 
@@ -81,23 +108,41 @@ export function withdrawableLocal(stream: StreamInfo, nowSec = Math.floor(Date.n
  * `JSON.stringify`, which breaks payloads sent to the GraphQL
  * indexer.  Call this before network submission to guarantee
  * interoperability across all browsers.
+ *
+ * Uses a `WeakSet` to handle circular references without infinite
+ * recursion, and iterates with indexed loops instead of `.map()` /
+ * `.entries()` to minimise per-element allocations.
  */
 export function bigintSafeStringify<T>(value: T): T {
+  return _safeStringify(value, new WeakSet());
+}
+
+function _safeStringify<T>(value: T, visited: WeakSet<object>): T {
   if (typeof value === 'bigint') {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return value.toString() as any;
   }
+  if (value === null || typeof value !== 'object') return value;
+  if (visited.has(value)) return value as T;
+  visited.add(value);
+
   if (Array.isArray(value)) {
-    return value.map(bigintSafeStringify) as unknown as T;
-  }
-  if (value !== null && typeof value === 'object') {
-    const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      out[k] = bigintSafeStringify(v);
+    const { length } = value;
+    const out = new Array<unknown>(length);
+    for (let i = 0; i < length; i++) {
+      out[i] = _safeStringify(value[i], visited);
     }
-    return out as T;
+    return out as unknown as T;
   }
-  return value;
+
+  const obj = value as Record<string, unknown>;
+  const keys = Object.keys(obj);
+  const out: Record<string, unknown> = {};
+  for (let i = 0; i < keys.length; i++) {
+    const k = keys[i];
+    out[k] = _safeStringify(obj[k], visited);
+  }
+  return out as T;
 }
 
 /**

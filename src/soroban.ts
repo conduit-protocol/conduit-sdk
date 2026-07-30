@@ -3,6 +3,10 @@
  *
  * Wraps @stellar/stellar-sdk's SorobanRpc to provide a thin
  * simulate → assemble → sign → submit pipeline.
+ *
+ * Performance note: SorobanRpc.Server instances are cached per RPC URL
+ * so that repeated calls (e.g. simulate → submit → poll) reuse the
+ * same HTTP client, avoiding redundant TLS and connection-pool setup.
  */
 
 import {
@@ -28,6 +32,30 @@ export const NETWORK_PASSPHRASE: Record<Network, string> = {
   testnet: Networks.TESTNET,
   local:   Networks.STANDALONE,
 };
+
+/**
+ * Cache SorobanRpc.Server instances per RPC URL so that callers
+ * who invoke multiple RPC methods sequentially or in parallel do
+ * not create a new HTTP client for every single call.
+ * Keyed by rpcUrl so different network targets get independent caches.
+ */
+const _serverCache = new Map<string, SorobanRpc.Server>();
+
+export function getServer(rpcUrl: string): SorobanRpc.Server {
+  let srv = _serverCache.get(rpcUrl);
+  if (!srv) {
+    srv = new SorobanRpc.Server(rpcUrl, { allowHttp: rpcUrl.startsWith('http://') });
+    _serverCache.set(rpcUrl, srv);
+  }
+  return srv;
+}
+
+/**
+ * Clear the server cache. Intended for use in tests.
+ */
+export function clearServerCache(): void {
+  _serverCache.clear();
+}
 
 export interface ConfirmationPollingOptions {
   pollIntervalMs?: number;
@@ -58,7 +86,7 @@ export async function buildContractCallTx(
   method:      string,
   args:        xdr.ScVal[],
 ): Promise<ReturnType<TransactionBuilder['build']>> {
-  const server  = new SorobanRpc.Server(rpcUrl, { allowHttp: rpcUrl.startsWith('http://') });
+  const server  = getServer(rpcUrl);
 
   let account;
   try {
@@ -89,7 +117,7 @@ export async function invokeContract(
   tx:         ReturnType<TransactionBuilder['build']>,
   pollingOptions: ConfirmationPollingOptions = {},
 ): Promise<string> {
-  const server = new SorobanRpc.Server(rpcUrl, { allowHttp: rpcUrl.startsWith('http://') });
+  const server = getServer(rpcUrl);
   const polling = normalizePollingOptions(pollingOptions);
 
   // Simulate
@@ -148,7 +176,7 @@ export async function simulateReadOnly(
   passphrase: string,
   tx:         ReturnType<TransactionBuilder['build']>,
 ): Promise<xdr.ScVal> {
-  const server = new SorobanRpc.Server(rpcUrl, { allowHttp: rpcUrl.startsWith('http://') });
+  const server = getServer(rpcUrl);
 
   let result;
   try {

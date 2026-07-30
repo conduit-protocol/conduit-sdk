@@ -28,6 +28,7 @@ export {
   UNKNOWN_CONTRACT_ERROR_CODE,
 } from './errors.js';
 export type { ConduitContract } from './errors.js';
+export type { StreamConfig, StreamState, Recipient } from './types/index.js';
 export * from './types/index.js';
 export * from './adapters/index.js';
 export { FeeEstimator } from './fee-estimator.js';

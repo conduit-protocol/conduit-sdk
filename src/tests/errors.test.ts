@@ -58,6 +58,16 @@ describe('ConduitError', () => {
     expect(governorErr.message).toMatch(/not authorized|governor authority/i);
     expect(streamErr.message).not.toBe(factoryErr.message);
   });
+
+  it('isKnown returns true for known codes', () => {
+    const err = new ConduitError('stream', StreamErrorCode.NothingToWithdraw);
+    expect(err.isKnown).toBe(true);
+  });
+
+  it('isKnown returns false for unknown codes', () => {
+    const err = new ConduitError('stream', 999);
+    expect(err.isKnown).toBe(false);
+  });
 });
 
 describe('ConduitError.fromContractError', () => {

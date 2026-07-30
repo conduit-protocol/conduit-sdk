@@ -15,13 +15,11 @@ export class GraphSyncAgent {
     const syncOperation = this.updateQueue.then(async () => {
       const rawDelta = await networkFetcher();
 
-      // Proper error-boundary handling
       if (typeof rawDelta !== 'number' || !Number.isFinite(rawDelta)) {
         throw new Error("Invalid network delta response");
       }
 
-      // Proper fractional decimal rounding to handle floating point impurities (e.g. 0.1 + 0.2 = 0.30000000000000004)
-      // Scale to 8 decimal places to safely add fractional amounts
+      // Scale to 8 decimal places for safe fractional accumulation
       const scale = 100000000;
       const scaledState = Math.round(this.currentState * scale);
       const scaledDelta = Math.round(rawDelta * scale);
@@ -31,10 +29,7 @@ export class GraphSyncAgent {
       return this.currentState;
     });
 
-    this.updateQueue = syncOperation.then(
-      () => undefined,
-      () => undefined
-    );
+    this.updateQueue = syncOperation.catch(() => undefined);
 
     return syncOperation;
   }

@@ -22,7 +22,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { UnsupportedChainError } from '../errors.js';
+import type { UnsupportedChainError } from '../errors.js';
 import { WalletConnectAdapter } from '../adapters/walletconnect.js';
 
 // ── Mock soroban so FactoryModule / GovernorModule can be imported without
@@ -98,6 +98,14 @@ describe('ConduitClient — constructor network validation', () => {
 
 // ── 2. ConduitClient.setWallet() — cross-chain wallet mismatch (was bypass) ──
 
+function unknownChainWallet(): import('../adapters/types.js').WalletAdapter {
+  return {
+    getPublicKey: () => 'G...',
+    signTransaction: async (tx) => tx as any,
+    chainId: 'stellar:unknown',
+  };
+}
+
 describe('ConduitClient.setWallet() — network cross-validation (#157)', () => {
   beforeEach(() => vi.resetModules());
 
@@ -131,6 +139,12 @@ describe('ConduitClient.setWallet() — network cross-validation (#157)', () => 
     const client = new ConduitClient({ network: 'testnet', factoryAddress: FACTORY_ADDR });
     const testnetWallet = new WalletConnectAdapter({ chainId: 'stellar:testnet' });
     expect(() => client.setWallet(testnetWallet)).not.toThrow();
+  });
+
+  it('rejects a wallet with an unrecognisable chainId', async () => {
+    const { ConduitClient } = await import('../client.js');
+    const client = new ConduitClient({ network: 'testnet', factoryAddress: FACTORY_ADDR });
+    expect(() => client.setWallet(unknownChainWallet())).toThrow(/Unsupported network/);
   });
 
   it('accepts a KeypairWalletAdapter (no chainId) on any network — chain-agnostic adapters are always allowed', async () => {
