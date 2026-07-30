@@ -45,6 +45,52 @@ function normalizePollingOptions(options: ConfirmationPollingOptions = {}): Requ
 }
 
 /**
+ * Creates a SorobanRpc.Server instance wrapped with an exponential backoff retry mechanism.
+ * Retries on HTTP 429 and 503 rate limits.
+ */
+export function createRpcServer(rpcUrl: string): SorobanRpc.Server {
+  const server = new SorobanRpc.Server(rpcUrl, { allowHttp: rpcUrl.startsWith('http://') });
+  
+  const ASYNC_METHODS = [
+    'getAccount',
+    'getEvents',
+    'simulateTransaction',
+    'sendTransaction',
+    'getTransaction',
+    'getLatestLedger',
+    'getNetwork',
+  ];
+
+  return new Proxy(server, {
+    get(target, propKey, receiver) {
+      const origMethod = (target as any)[propKey];
+      if (typeof origMethod === 'function' && typeof propKey === 'string' && ASYNC_METHODS.includes(propKey)) {
+        return async function (...args: any[]) {
+          const MAX_RETRIES = 3;
+          let delay = 500;
+
+          for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+            try {
+              return await origMethod.apply(target, args);
+            } catch (err) {
+              const rateLimitErr = RateLimitError.fromRpcError(err);
+              
+              if (!rateLimitErr || attempt === MAX_RETRIES) {
+                throw rateLimitErr ?? err;
+              }
+              const waitTime = rateLimitErr.retryAfterMs ?? delay;
+              await sleep(waitTime);
+              delay *= 2; // Backoff factor: 2x
+            }
+          }
+        };
+      }
+      return Reflect.get(target, propKey, receiver);
+    }
+  });
+}
+
+/**
  * Build a contract-call transaction for simulate or submit.
  *
  * Fetches the caller's account from the RPC to get the current sequence
@@ -58,7 +104,7 @@ export async function buildContractCallTx(
   method:      string,
   args:        xdr.ScVal[],
 ): Promise<ReturnType<TransactionBuilder['build']>> {
-  const server  = new SorobanRpc.Server(rpcUrl, { allowHttp: rpcUrl.startsWith('http://') });
+  const server  = createRpcServer(rpcUrl);
 
   let account;
   try {
@@ -89,7 +135,7 @@ export async function invokeContract(
   tx:         ReturnType<TransactionBuilder['build']>,
   pollingOptions: ConfirmationPollingOptions = {},
 ): Promise<string> {
-  const server = new SorobanRpc.Server(rpcUrl, { allowHttp: rpcUrl.startsWith('http://') });
+  const server = createRpcServer(rpcUrl);
   const polling = normalizePollingOptions(pollingOptions);
 
   // Simulate
@@ -148,7 +194,7 @@ export async function simulateReadOnly(
   passphrase: string,
   tx:         ReturnType<TransactionBuilder['build']>,
 ): Promise<xdr.ScVal> {
-  const server = new SorobanRpc.Server(rpcUrl, { allowHttp: rpcUrl.startsWith('http://') });
+  const server = createRpcServer(rpcUrl);
 
   let result;
   try {

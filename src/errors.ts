@@ -248,11 +248,11 @@ export class RateLimitError extends Error {
     if (!raw || typeof raw !== 'object') return null;
 
     const response = (raw as { response?: { status?: number; headers?: Record<string, unknown> } }).response;
-    if (response?.status === 429) {
+    if (response?.status === 429 || response?.status === 503) {
       const retryAfterHeader = response.headers?.['retry-after'];
       const retryAfterMs = RateLimitError.parseRetryAfterMs(retryAfterHeader);
       return new RateLimitError(
-        'RPC node rate limit exceeded (429 Too Many Requests). Back off and retry.',
+        `RPC node rate limit or service unavailable (${response.status}). Back off and retry.`,
         retryAfterMs,
       );
     }

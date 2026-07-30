@@ -38,7 +38,7 @@ import {
   xdr,
   BASE_FEE,
 } from '@stellar/stellar-sdk';
-import { NETWORK_PASSPHRASE } from './soroban.js';
+import { NETWORK_PASSPHRASE, createRpcServer } from './soroban.js';
 import { RateLimitError } from './errors.js';
 import type { Network } from './types/index.js';
 
@@ -272,9 +272,7 @@ export async function buildBatchTransactions(
     return buildBatchTransactionsSync(operations, context);
   }
 
-  const server = new SorobanRpc.Server(context.rpcUrl, {
-    allowHttp: context.rpcUrl.startsWith('http://'),
-  });
+  const server = createRpcServer(context.rpcUrl);
 
   let sequence = context.sequence;
   if (sequence === undefined) {

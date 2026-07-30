@@ -29,6 +29,7 @@ import {
   NETWORK_PASSPHRASE,
   DEFAULT_CONFIRMATION_MAX_ATTEMPTS,
   DEFAULT_CONFIRMATION_POLL_INTERVAL_MS,
+  createRpcServer,
 } from './soroban.js';
 import { FactoryModule } from './factory.js';
 import { ConduitError, RateLimitError, StreamErrorCode } from './errors.js';
@@ -466,7 +467,7 @@ export class StreamsModule {
   }
 
   private _server(): SorobanRpc.Server {
-    return new SorobanRpc.Server(this.rpcUrl, { allowHttp: this.rpcUrl.startsWith('http://') });
+    return createRpcServer(this.rpcUrl);
   }
 
   private async _resolveAddr(id: bigint): Promise<string> {
