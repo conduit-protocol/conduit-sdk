@@ -4,7 +4,7 @@ import { withdrawableLocal } from './utils.js';
 export interface Module26Config {
   /** Maximum number of portfolio summaries retained in the LRU cache */
   cacheSize?: number;
-  /** Enable memoized aggregation for ≥20% throughput improvement */
+  /** Enable memoized aggregation; actual speedup depends on hit rate — see `getPerformanceMetrics()` for a measured value */
   enableOptimization?: boolean;
   /** Preferred chunk size when scanning large stream portfolios */
   batchChunkSize?: number;
@@ -32,7 +32,12 @@ export interface Module26Metrics {
   totalAggregations: number;
   cacheHits: number;
   cacheMisses: number;
-  performanceGainPercent: number;
+  /**
+   * Measured, not assumed: `(avgMissMs - avgHitMs) / avgMissMs * 100`, based
+   * on this instance's own accumulated timings. `null` until at least one
+   * hit and one miss have both been recorded (nothing to compare yet).
+   */
+  measuredSpeedupPercent: number | null;
   averageExecutionTimeMs: number;
 }
 
@@ -44,10 +49,12 @@ function classifyStream(stream: StreamInfo, nowSec: number): 'active' | 'paused'
 }
 
 /**
- * Module 26: High-performance stream portfolio aggregator.
+ * Module 26: stream portfolio aggregator.
  *
- * Implements Feature #26 with LRU-memoized portfolio summaries to deliver
- * ≥20% throughput improvement when repeatedly aggregating stream sets.
+ * Implements Feature #26 with LRU-memoized portfolio summaries. Speedup
+ * from caching is workload-dependent (proportional to cache hit rate);
+ * call `getPerformanceMetrics()` for this instance's own measured hit/miss
+ * timing rather than assuming a fixed percentage.
  */
 export class Module26 {
   private readonly cacheSize: number;
@@ -59,6 +66,8 @@ export class Module26 {
   private cacheHits = 0;
   private cacheMisses = 0;
   private totalExecutionTimeMs = 0;
+  private hitExecutionTimeMs = 0;
+  private missExecutionTimeMs = 0;
 
   constructor(config: Module26Config = {}) {
     this.cacheSize = config.cacheSize ?? 1000;
@@ -81,9 +90,11 @@ export class Module26 {
     if (this.enableOptimization) {
       const cached = this.cache.get(cacheKey);
       if (cached) {
+        const elapsed = performance.now() - start;
         this.cacheHits++;
         this.totalAggregations++;
-        this.totalExecutionTimeMs += performance.now() - start;
+        this.totalExecutionTimeMs += elapsed;
+        this.hitExecutionTimeMs += elapsed;
         this.cache.delete(cacheKey);
         this.cache.set(cacheKey, cached);
         return { ...cached, isCached: true };
@@ -139,8 +150,10 @@ export class Module26 {
       this.cache.set(cacheKey, summary);
     }
 
+    const elapsed = performance.now() - start;
     this.totalAggregations++;
-    this.totalExecutionTimeMs += performance.now() - start;
+    this.totalExecutionTimeMs += elapsed;
+    this.missExecutionTimeMs += elapsed;
     return summary;
   }
 
@@ -163,18 +176,23 @@ export class Module26 {
     this.cacheMisses = 0;
     this.totalAggregations = 0;
     this.totalExecutionTimeMs = 0;
+    this.hitExecutionTimeMs = 0;
+    this.missExecutionTimeMs = 0;
   }
 
   public getPerformanceMetrics(): Module26Metrics {
-    const totalRequests = this.cacheHits + this.cacheMisses;
-    const hitRate = totalRequests > 0 ? this.cacheHits / totalRequests : 0;
-    const performanceGainPercent = Math.round(hitRate * 35 + 20);
+    const avgHitMs = this.cacheHits > 0 ? this.hitExecutionTimeMs / this.cacheHits : null;
+    const avgMissMs = this.cacheMisses > 0 ? this.missExecutionTimeMs / this.cacheMisses : null;
+    const measuredSpeedupPercent =
+      avgHitMs !== null && avgMissMs !== null && avgMissMs > 0
+        ? ((avgMissMs - avgHitMs) / avgMissMs) * 100
+        : null;
 
     return {
       totalAggregations: this.totalAggregations,
       cacheHits: this.cacheHits,
       cacheMisses: this.cacheMisses,
-      performanceGainPercent: this.enableOptimization ? performanceGainPercent : 0,
+      measuredSpeedupPercent: this.enableOptimization ? measuredSpeedupPercent : null,
       averageExecutionTimeMs:
         this.totalAggregations > 0 ? this.totalExecutionTimeMs / this.totalAggregations : 0,
     };

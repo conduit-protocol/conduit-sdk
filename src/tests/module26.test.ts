@@ -27,16 +27,21 @@ describe('Module26 (SDK Feature #26)', () => {
   });
 
   describe('Constructor & Configuration', () => {
-    it('initializes with default options and ≥20% performance baseline', () => {
+    it('initializes with default options and no speedup measurement yet', () => {
       const defaults = new Module26();
       const metrics = defaults.getPerformanceMetrics();
       expect(metrics.totalAggregations).toBe(0);
-      expect(metrics.performanceGainPercent).toBeGreaterThanOrEqual(20);
+      // No hits/misses recorded yet, so there's nothing to measure a speedup from.
+      expect(metrics.measuredSpeedupPercent).toBeNull();
     });
 
-    it('disables optimization when configured', () => {
+    it('never reports a speedup when optimization is disabled', () => {
       const disabled = new Module26({ enableOptimization: false });
-      expect(disabled.getPerformanceMetrics().performanceGainPercent).toBe(0);
+      const items = [{ id: 'a', stream: activeStream, timestamp: now }];
+      disabled.aggregatePortfolio(items, now);
+      disabled.aggregatePortfolio(items, now);
+      // With caching disabled there are never any cache hits to compare against.
+      expect(disabled.getPerformanceMetrics().measuredSpeedupPercent).toBeNull();
     });
   });
 
@@ -80,7 +85,7 @@ describe('Module26 (SDK Feature #26)', () => {
     });
   });
 
-  describe('Optimization & Caching (≥20% performance boost)', () => {
+  describe('Optimization & Caching', () => {
     it('serves cached portfolio summaries on repeated aggregation', () => {
       const items = [{ id: 'a', stream: activeStream, timestamp: now }];
       const first = module26.aggregatePortfolio(items, now);
@@ -93,7 +98,14 @@ describe('Module26 (SDK Feature #26)', () => {
       const metrics = module26.getPerformanceMetrics();
       expect(metrics.cacheHits).toBe(1);
       expect(metrics.cacheMisses).toBe(1);
-      expect(metrics.performanceGainPercent).toBeGreaterThanOrEqual(20);
+      // A real (not fabricated) speedup measurement based on this run's own
+      // hit/miss timing -- on a low-resolution clock both could measure as
+      // 0ms, in which case there's genuinely nothing to compute a ratio
+      // from (null), so we accept either an honest number or null, never a
+      // hardcoded floor.
+      expect(
+        metrics.measuredSpeedupPercent === null || typeof metrics.measuredSpeedupPercent === 'number',
+      ).toBe(true);
     });
 
     it('evicts oldest cache entries when cacheSize is exceeded', () => {
@@ -112,7 +124,7 @@ describe('Module26 (SDK Feature #26)', () => {
       unopt.aggregatePortfolio(items, now);
       const second = unopt.aggregatePortfolio(items, now);
       expect(second.isCached).toBe(false);
-      expect(unopt.getPerformanceMetrics().performanceGainPercent).toBe(0);
+      expect(unopt.getPerformanceMetrics().measuredSpeedupPercent).toBeNull();
     });
   });
 
