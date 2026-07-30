@@ -372,6 +372,32 @@ clearTokenDecimalsCache(); // force a fresh simulation on the next call
 
 ---
 
+## Wallet Adapters
+
+`WalletAdapter` is the interface `client.streams` signs transactions through — implement it to
+support any wallet. The SDK ships two implementations:
+
+### `KeypairWalletAdapter`
+
+Wraps a raw `@stellar/stellar-sdk` `Keypair` so `config.keypair` can be used through the same
+`WalletAdapter` interface as a browser or WalletConnect wallet. Constructed automatically by
+`ConduitClient`/`StreamsModule` when `config.keypair` is supplied and no `config.wallet` is given.
+
+```typescript
+new KeypairWalletAdapter(keypair: Keypair)
+```
+
+* `getPublicKey(): string` — the keypair's G-address.
+* `signTransaction(tx: Transaction | string, opts?: SignTransactionOptions): Promise<Transaction | string>` — signs and returns a `Transaction` instance as-is; for a raw XDR string, requires `opts.networkPassphrase` (throws otherwise) and returns signed XDR. `opts.accountToSign` is not applicable — a keypair only ever signs as itself.
+* `isConnected(): boolean` — always `true`.
+
+### `WalletConnectAdapter`
+
+Wraps a WalletConnect v2 session. See its JSDoc in `src/adapters/walletconnect.ts` for the full
+option set.
+
+---
+
 ## `GraphQLIndexer`
 
 A client for a Conduit indexer's GraphQL endpoint — one-shot queries plus live subscriptions.
