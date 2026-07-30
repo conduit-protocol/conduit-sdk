@@ -112,6 +112,24 @@ array instead.
 
 ---
 
+## Performance
+
+### RPC call reduction in `list()`
+
+`client.streams.list()` previously issued 3 RPC calls per stream: one factory address lookup, one `getAccount` for the sequence number, and one `simulateTransaction` for the `info` call. For a page of 20 streams that was up to 61 RPCs.
+
+**Optimisations applied (see `streams.ts`):**
+
+1. **Session-scoped address cache** (`_addrCache: Map<bigint, string>`): `_resolveAddr()` now caches stream ID → contract address for the lifetime of the `StreamsModule` instance. A stream's contract address is immutable once assigned by the factory, so this cache never needs invalidation. Repeated calls to `get`, `withdraw`, `cancel`, `pause`, `resume`, `topUp`, `clawback`, `withdrawable`, and `batchWithdraw` on the same stream ID skip the factory RPC entirely after the first resolution.
+
+2. **Pre-warmed address cache on `list()`**: Before fetching stream info, `list()` now resolves all addresses for the current page concurrently via `Promise.all`. On a warm cache (second `list()` call, or reuse of the same `StreamsModule` across calls), the address phase is free. On a cold cache, the fan-out is fully parallel instead of implicit in the subsequent per-stream `get()` calls.
+
+3. **Memoised `_server()` proxy** (`_rpcServerProxy`): `createRpcServer()` constructs a new `Proxy` object on every call even though the underlying `SorobanRpc.Server` is already cached by URL. `StreamsModule` now holds one proxy per instance, avoiding the per-call `Proxy` allocation overhead across all RPC operations.
+
+4. **Parallel `buildBatchTransactions` simulations** (`batch-tx.ts`): The async variant of `buildBatchTransactions` previously simulated each operation sequentially in a `for` loop. Soroban simulations are independent read operations — they do not mutate state and do not depend on each other's outcome — so they are now fanned out with `Promise.all`, reducing wall-clock time for N-operation batches from O(N × RTT) to O(RTT).
+
+---
+
 ## What's *not* wrapped yet
 
 `DripStream::force_cancel`, `transfer_recipient`, and `streamed_total` exist on the contract

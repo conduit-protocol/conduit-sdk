@@ -289,38 +289,42 @@ export async function buildBatchTransactions(
   const fee = context.fee ?? BASE_FEE;
   const timeout = context.timeoutSeconds ?? DEFAULT_BATCH_TIMEOUT_SECONDS;
 
-  const built: BuiltBatchTransaction[] = [];
-
-  for (let index = 0; index < operations.length; index++) {
-    const operation = operations[index]!;
+  // Build all transactions offline first (sequence numbers are deterministic),
+  // then simulate them all in parallel. Soroban simulations are independent
+  // read operations — they do not mutate state and do not depend on each
+  // other's outcome — so there is no correctness reason to run them serially.
+  const txs = operations.map((operation, index) => {
     if (!operation?.method || typeof operation.method !== 'string') {
       throw new BatchBuildError(`Operation at index ${index} is missing a method name`);
     }
-
     const txSequence = (BigInt(sequence) + BigInt(index)).toString();
     const account = new Account(context.sourceAccount, txSequence);
-
     const tx = new TransactionBuilder(account, { fee, networkPassphrase: passphrase })
       .addOperation(contract.call(operation.method, ...operationToScVals(operation)))
       .setTimeout(timeout)
       .build();
+    return { operation, index, tx };
+  });
 
-    let simulation;
-    try {
-      simulation = await server.simulateTransaction(tx);
-    } catch (err) {
-      throw RateLimitError.fromRpcError(err) ?? err;
-    }
+  const simulationResults = await Promise.all(
+    txs.map(async ({ tx, index, operation }) => {
+      let simulation;
+      try {
+        simulation = await server.simulateTransaction(tx);
+      } catch (err) {
+        throw RateLimitError.fromRpcError(err) ?? err;
+      }
+      if (SorobanRpc.Api.isSimulationError(simulation)) {
+        throw new BatchBuildError(
+          `Simulation failed for operation ${index} (${operation.method}): ${simulation.error}`,
+        );
+      }
+      return { index, operation, tx, simulation };
+    }),
+  );
 
-    if (SorobanRpc.Api.isSimulationError(simulation)) {
-      throw new BatchBuildError(
-        `Simulation failed for operation ${index} (${operation.method}): ${simulation.error}`,
-      );
-    }
-
+  return simulationResults.map(({ index, operation, tx, simulation }) => {
     const assembled = SorobanRpc.assembleTransaction(tx, simulation).build();
-    built.push({ index, method: operation.method, xdr: assembled.toXDR(), prepared: true });
-  }
-
-  return built;
+    return { index, method: operation.method, xdr: assembled.toXDR(), prepared: true };
+  });
 }

@@ -73,6 +73,23 @@ export class StreamsModule {
   private readonly _factory:   FactoryModule;
   private activeWallet?:       WalletAdapter;
 
+  /**
+   * Session-scoped cache of stream ID → contract address resolutions.
+   * Avoids a redundant factory RPC on every get/withdraw/cancel/pause/resume/topUp/clawback call
+   * for the same stream within a single StreamsModule lifetime. The cache is
+   * intentionally not invalidated on writes — a stream's contract address is
+   * immutable once assigned by the factory.
+   */
+  private readonly _addrCache = new Map<bigint, string>();
+
+  /**
+   * Cached rate-limit-retry proxy for this module's RPC URL.
+   * createRpcServer() wraps the underlying cached Server in a new Proxy on
+   * every call, so we hold one proxy per StreamsModule instance to avoid the
+   * per-call Proxy allocation overhead.
+   */
+  private _rpcServerProxy: SorobanRpc.Server | null = null;
+
   constructor(private readonly config: ConduitConfig) {
     this.rpcUrl     = config.rpcUrl ?? DEFAULT_RPC[config.network];
     this.passphrase = NETWORK_PASSPHRASE[config.network];
@@ -361,6 +378,12 @@ export class StreamsModule {
 
     const pageFromFilteredIds = async (filteredIds: bigint[]): Promise<PaginatedStreams> => {
       ids = filteredIds;
+      // Pre-warm the address cache for all IDs in this page concurrently,
+      // then fetch stream info in parallel. Without this, each this.get(id)
+      // call would serially resolve the address and then simulate — 2 serial
+      // RPCs per stream. Pre-warming collapses the address lookups into a
+      // single parallel fan-out before the info simulations begin.
+      await Promise.all(ids.map(id => this._resolveAddr(id)));
       const streams = await Promise.all(ids.map(id => this.get(id)));
       const hasNextPage = ids.length === limit;
       const totalCount = BigInt(offset + ids.length);
@@ -472,12 +495,26 @@ export class StreamsModule {
   }
 
   private _server(): SorobanRpc.Server {
-    return createRpcServer(this.rpcUrl);
+    // Reuse the same Proxy wrapper for the lifetime of this module instance.
+    // createRpcServer() always constructs a new Proxy object even though the
+    // underlying SorobanRpc.Server is already cached — memoizing here avoids
+    // the redundant Proxy allocation on every RPC call.
+    if (!this._rpcServerProxy) {
+      this._rpcServerProxy = createRpcServer(this.rpcUrl);
+    }
+    return this._rpcServerProxy;
   }
 
   private async _resolveAddr(id: bigint): Promise<string> {
+    // Return from the session cache to avoid a factory RPC on every operation
+    // for the same stream ID. Stream contract addresses are immutable once
+    // assigned by the factory, so the cache never needs invalidation.
+    const cached = this._addrCache.get(id);
+    if (cached) return cached;
+
     const addr = await this._factory.streamAddress(id);
     if (!addr) throw new ConduitError('stream', StreamErrorCode.StreamNotFound, `Stream ${id} not found`);
+    this._addrCache.set(id, addr);
     return addr;
   }
 
