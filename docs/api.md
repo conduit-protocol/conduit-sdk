@@ -599,3 +599,28 @@ new Module36(config?: Module36Config)
 * `clearCache(): void` — Clears the LRU cache and performance counters.
 * `getPerformanceMetrics(): Module36Metrics` — Returns `totalDiffs`, `cacheHits`, `cacheMisses`, `averageExecutionTimeMs`, and `measuredSpeedupPercent` (a real measurement derived from this instance's own accumulated hit/miss timings, `null` until both have occurred at least once — not a fixed assumed percentage).
 
+---
+
+## `Module26` (Feature #26)
+
+Stream portfolio aggregator implementing Feature #26. Uses LRU-memoized summaries to avoid recomputing totals for repeated identical portfolio comparisons; actual speedup is workload-dependent (proportional to cache hit rate).
+
+### Constructor
+
+```typescript
+new Module26(config?: Module26Config)
+```
+
+| Option | Type | Default | Notes |
+|--------|------|---------|-------|
+| `cacheSize` | `number` | `1000` | Max entries in the LRU memoization cache |
+| `enableOptimization` | `boolean` | `true` | Enables LRU-memoized aggregation |
+| `batchChunkSize` | `number` | `50` | Chunk size for large portfolio scans |
+
+### Methods
+
+* `aggregatePortfolio(items: PortfolioStreamItem[], nowSec?: number): PortfolioSummary` — Totals withdrawable balance, active rate, and lifecycle counts.
+* `projectRemaining(stream: StreamInfo, horizonSecs: number, nowSec?: number): bigint` — Projects remaining accrual over a time horizon.
+* `clearCache(): void` — Clears the LRU cache and performance counters.
+* `getPerformanceMetrics(): Module26Metrics` — Returns `totalAggregations`, `cacheHits`, `cacheMisses`, `averageExecutionTimeMs`, and `measuredSpeedupPercent` (a real measurement derived from this instance's own accumulated hit/miss timings, `null` until both have occurred at least once — not a fixed assumed percentage).
+

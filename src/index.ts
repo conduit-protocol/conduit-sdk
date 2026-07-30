@@ -64,3 +64,11 @@ export type {
   StreamDiff,
   Module36Metrics,
 } from './module36.js';
+
+export { Module26 } from './module26.js';
+export type {
+  Module26Config,
+  PortfolioStreamItem,
+  PortfolioSummary,
+  Module26Metrics,
+} from './module26.js';
