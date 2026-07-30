@@ -431,6 +431,38 @@ describe('#136 — selectors', () => {
     expect(selectVisibleTransactions(shrunk)).toHaveLength(1);
   });
 
+  it('keeps equal timestamps in original order, matching a stable full sort (#375)', () => {
+    const tied = [
+      makeRaw({ id: 'first', timestamp: 5000 }),
+      makeRaw({ id: 'second', timestamp: 5000 }),
+      makeRaw({ id: 'third', timestamp: 5000 }),
+      makeRaw({ id: 'newest', timestamp: 9000 }),
+    ];
+    const state = transactionHistoryReducer(undefined, { type: 'LOAD_SUCCESS', payload: tied });
+    expect(selectVisibleTransactions(state).map((t) => t.id)).toEqual([
+      'newest', 'first', 'second', 'third',
+    ]);
+  });
+
+  it('matches a brute-force full sort across a large dataset and every page (#375)', () => {
+    const n = 2500;
+    const pageSize = 25;
+    const payloadLarge = Array.from({ length: n }, (_, i) =>
+      makeRaw({ id: `tx-${i}`, timestamp: Math.floor(i % 37) }),
+    );
+    const state = {
+      ...transactionHistoryReducer(undefined, { type: 'LOAD_SUCCESS', payload: payloadLarge }),
+      pageSize,
+    };
+    const bruteForce = [...selectFilteredTransactions(state)].sort((a, b) => b.timestamp - a.timestamp);
+    const totalPages = selectTotalPages(state);
+    for (const page of [0, 1, 2, Math.floor(totalPages / 2), totalPages - 1]) {
+      const got = selectVisibleTransactions({ ...state, page }).map((t) => t.id);
+      const want = bruteForce.slice(page * pageSize, page * pageSize + pageSize).map((t) => t.id);
+      expect(got).toEqual(want);
+    }
+  });
+
   it('rejects an invalid page size', () => {
     for (const bad of [0, -1, NaN, 'abc', undefined, null]) {
       const next = transactionHistoryReducer(loaded, {

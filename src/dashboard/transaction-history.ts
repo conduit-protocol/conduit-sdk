@@ -456,11 +456,17 @@ export function transactionHistoryReducer(
  *
  * The cache is keyed on the identity of `state.transactions` (not on the state
  * object) because pagination and page-size changes produce a *new state* that
- * reuses the *same* rows array — so paging through a loaded page is now pure
- * cache hits with no filter and no sort. A new indexer payload allocates a new
- * array via `normalizeTransactions`, which misses the cache and recomputes;
- * a filter change is caught by the signature check. `WeakMap` keeps entries
- * collectable as soon as the rows array is dropped.
+ * reuses the *same* rows array — so paging through a loaded page is a filter
+ * cache hit (`selectFilteredTransactions`/`entry.filtered`). A new indexer
+ * payload allocates a new array via `normalizeTransactions`, which misses the
+ * cache and recomputes; a filter change is caught by the signature check.
+ * `WeakMap` keeps entries collectable as soon as the rows array is dropped.
+ *
+ * Ranking/pagination itself (`selectVisibleTransactions`) is NOT cached: it
+ * runs a bounded top-k selection (see `topKByTimestampDesc` below) against
+ * the cached filtered rows on every call, in O(n log k) rather than the full
+ * O(n log n) sort this used to do — cheap enough that recomputing it per call
+ * is the point, not a cost to avoid.
  *
  * This assumes records are treated as immutable, which holds throughout this
  * module: the reducer never mutates state and normalisation always allocates
@@ -469,8 +475,6 @@ export function transactionHistoryReducer(
 interface SelectorCacheEntry {
   signature: string;
   filtered: TransactionRecord[];
-  /** Sorted copy, computed lazily — only `selectVisibleTransactions` needs it. */
-  sorted: TransactionRecord[] | null;
 }
 
 const NO_TRANSACTIONS: readonly TransactionRecord[] = Object.freeze([]);
@@ -485,7 +489,7 @@ function selectorEntry(
     : NO_TRANSACTIONS;
   const filters = { ...INITIAL_TRANSACTION_FILTERS, ...(state?.filters ?? {}) };
   const search = asString(filters.search).trim().toLowerCase();
-  const signature = `${filters.status} ${filters.kind} ${filters.direction} ${search}`;
+  const signature = `${filters.status} ${filters.kind} ${filters.direction} ${search}`;
 
   const cached = selectorCache.get(transactions);
   if (cached !== undefined && cached.signature === signature) return cached;
@@ -504,7 +508,7 @@ function selectorEntry(
     );
   });
 
-  const entry: SelectorCacheEntry = { signature, filtered, sorted: null };
+  const entry: SelectorCacheEntry = { signature, filtered };
   selectorCache.set(transactions, entry);
   return entry;
 }
@@ -516,21 +520,82 @@ export function selectFilteredTransactions(
   return selectorEntry(state).filtered;
 }
 
+interface RankedTransaction {
+  tx: TransactionRecord;
+  idx: number; // breaks ties the same way a stable sort would
+}
+
+function isLowerPriority(a: RankedTransaction, b: RankedTransaction): boolean {
+  if (a.tx.timestamp !== b.tx.timestamp) return a.tx.timestamp < b.tx.timestamp;
+  return a.idx > b.idx;
+}
+
+function siftDown(heap: RankedTransaction[], i: number): void {
+  const n = heap.length;
+  for (;;) {
+    const left = 2 * i + 1;
+    const right = 2 * i + 2;
+    let smallest = i;
+    if (left < n && isLowerPriority(heap[left]!, heap[smallest]!)) {
+      smallest = left;
+    }
+    if (right < n && isLowerPriority(heap[right]!, heap[smallest]!)) {
+      smallest = right;
+    }
+    if (smallest === i) return;
+    const tmp = heap[i]!;
+    heap[i] = heap[smallest]!;
+    heap[smallest] = tmp;
+    i = smallest;
+  }
+}
+
+/** Returns the `k` newest transactions, sorted newest-first, in O(n log k). */
+function topKByTimestampDesc(transactions: TransactionRecord[], k: number): TransactionRecord[] {
+  if (k <= 0 || transactions.length === 0) return [];
+
+  const heap: RankedTransaction[] = [];
+  for (let idx = 0; idx < transactions.length; idx++) {
+    const candidate: RankedTransaction = { tx: transactions[idx]!, idx };
+    if (heap.length < k) {
+      heap.push(candidate);
+      let i = heap.length - 1;
+      while (i > 0) {
+        const parent = (i - 1) >> 1;
+        if (isLowerPriority(heap[parent]!, heap[i]!)) break;
+        const tmp = heap[i]!;
+        heap[i] = heap[parent]!;
+        heap[parent] = tmp;
+        i = parent;
+      }
+    } else if (isLowerPriority(heap[0]!, candidate)) {
+      heap[0] = candidate;
+      siftDown(heap, 0);
+    }
+  }
+
+  return heap
+    .sort((a, b) => (isLowerPriority(a, b) ? 1 : isLowerPriority(b, a) ? -1 : 0))
+    .map((r) => r.tx);
+}
+
 /** Filtered rows, newest first, sliced to the current page. */
 export function selectVisibleTransactions(
   state: TransactionHistoryState | undefined,
 ): TransactionRecord[] {
-  const entry = selectorEntry(state);
-  const sorted =
-    entry.sorted ??
-    (entry.sorted = [...entry.filtered].sort((a, b) => b.timestamp - a.timestamp));
+  const filtered = selectFilteredTransactions(state);
 
   const pageSize = Math.max(1, Math.trunc(state?.pageSize ?? DEFAULT_PAGE_SIZE));
-  const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const page = clampPage(state?.page ?? 0, totalPages);
   const start = page * pageSize;
 
-  return sorted.slice(start, start + pageSize);
+  const k = start + pageSize;
+  const top =
+    k < filtered.length * 0.5
+      ? topKByTimestampDesc(filtered, k)
+      : [...filtered].sort((a, b) => b.timestamp - a.timestamp);
+  return top.slice(start, start + pageSize);
 }
 
 /** Total number of pages for the current filters (always >= 1). */
