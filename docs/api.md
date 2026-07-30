@@ -154,6 +154,13 @@ sub.unsubscribe();
 
 ### `streamCount() → Promise<bigint>`
 ### `streamAddress(id) → Promise<string | null>`
+
+Resolved (non-null) addresses are cached in-memory for the lifetime of the client, since a
+stream's contract address is fixed at creation and never changes. A `null` result (stream not
+yet found) is not cached, so a later call for the same `id` will still hit the network. This
+cache is what `StreamsModule` relies on to avoid re-resolving the same address on every
+`get`/`withdraw`/`cancel`/`pause`/`resume`/`topUp`/`clawback` call and when paginating `list()`.
+
 ### `protocolFeeBps() → Promise<number>`
 
 ---

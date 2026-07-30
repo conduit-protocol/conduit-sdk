@@ -111,6 +111,57 @@ describe('FactoryModule — streamAddress()', () => {
     const addr = await new FactoryModule(cfg()).streamAddress(999n);
     expect(addr).toBeNull();
   });
+
+  it('caches a resolved address and does not re-hit the network on the next call', async () => {
+    const { FactoryModule } = await import('../factory.js');
+    mockSimulate.mockResolvedValueOnce(makeU32ScVal(1)); // any non-void scval
+    const factory = new FactoryModule(cfg());
+
+    const first  = await factory.streamAddress(1n);
+    const second = await factory.streamAddress(1n);
+
+    expect(first).toBe(second);
+    expect(mockSimulate).toHaveBeenCalledTimes(1);
+  });
+
+  it('caches per streamId — a different id still hits the network', async () => {
+    const { FactoryModule } = await import('../factory.js');
+    mockSimulate
+      .mockResolvedValueOnce(makeU32ScVal(1))
+      .mockResolvedValueOnce(makeU32ScVal(1));
+    const factory = new FactoryModule(cfg());
+
+    await factory.streamAddress(1n);
+    await factory.streamAddress(2n);
+
+    expect(mockSimulate).toHaveBeenCalledTimes(2);
+  });
+
+  it('accepts string and bigint streamId forms as the same cache key', async () => {
+    const { FactoryModule } = await import('../factory.js');
+    mockSimulate.mockResolvedValueOnce(makeU32ScVal(1));
+    const factory = new FactoryModule(cfg());
+
+    await factory.streamAddress(5n);
+    await factory.streamAddress('5');
+
+    expect(mockSimulate).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not cache a not-found (void) result, so a later resolution still hits the network', async () => {
+    const { FactoryModule } = await import('../factory.js');
+    mockSimulate
+      .mockResolvedValueOnce(makeVoidScVal())
+      .mockResolvedValueOnce(makeU32ScVal(1));
+    const factory = new FactoryModule(cfg());
+
+    const first  = await factory.streamAddress(7n);
+    const second = await factory.streamAddress(7n);
+
+    expect(first).toBeNull();
+    expect(second).not.toBeNull();
+    expect(mockSimulate).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('FactoryModule — protocolFeeBps()', () => {

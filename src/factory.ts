@@ -20,6 +20,13 @@ export class FactoryModule {
   private readonly factoryId:   string;
   private readonly callerAddr:  string;
 
+  // streamId -> contract address is set once at creation and never changes,
+  // so a resolved (non-null) address can be cached for the lifetime of this
+  // module instance. This avoids re-resolving the same address on every
+  // stream operation (get/withdraw/cancel/pause/... all call streamAddress()
+  // via StreamsModule._resolveAddr, and list() fans this out over a full page).
+  private readonly addressCache = new Map<string, string>();
+
   constructor(private readonly config: ConduitConfig) {
     // Guard against direct construction with an unsupported network, which
     // would bypass the ConduitClient validation gate and produce a confusing
@@ -57,6 +64,11 @@ export class FactoryModule {
   /** Resolve a stream ID to its deployed contract address. Returns null if not found. */
   async streamAddress(streamId: bigint | string): Promise<string | null> {
     const id  = BigInt(streamId);
+    const key = id.toString();
+
+    const cached = this.addressCache.get(key);
+    if (cached !== undefined) return cached;
+
     const tx  = await buildContractCallTx(
       this.rpcUrl, this.passphrase, this.callerAddr,
       this.factoryId, 'stream_address',
@@ -67,7 +79,9 @@ export class FactoryModule {
     // Contract returns Option<Address> — void = None
     if (val.switch().name === 'scvVoid') return null;
     try {
-      return Address.fromScVal(val).toString();
+      const addr = Address.fromScVal(val).toString();
+      this.addressCache.set(key, addr);
+      return addr;
     } catch {
       return null;
     }
