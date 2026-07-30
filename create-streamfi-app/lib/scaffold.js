@@ -5,7 +5,7 @@ const { basename, resolve } = require('node:path');
 // A maintained, general-purpose Next.js starter. Projects can provide a StreamFi
 // specific fork with --template as soon as one is available.
 const DEFAULT_TEMPLATE = 'https://github.com/ixartz/Next-js-Boilerplate.git';
-const SDK_PACKAGE = '@streamfi/sdk';
+const SDK_PACKAGE = '@conduit-protocol/sdk';
 
 function parseArguments(args) {
   const options = { template: DEFAULT_TEMPLATE, skipInstall: false, help: false };
