@@ -399,3 +399,120 @@ if (!result.success) {
 
 **Throws:** `ConduitError` if batcher is destroyed.
 
+---
+
+## `RoomManager` (Server Utility)
+
+> **Added in issue #367 (module 33)** — performance-optimised WebSocket room manager used by `src/server.js`.
+
+```javascript
+const { RoomManager } = require('./src/room-manager');
+```
+
+### Constructor
+
+```javascript
+new RoomManager(options?)
+```
+
+| Option | Type | Default | Notes |
+|--------|------|---------|-------|
+| `maxRoomSize` | `number` | `Infinity` | Maximum number of simultaneous clients per room |
+
+---
+
+### `join(clientId, roomId, ws) → { ok, reason? }`
+
+Add a client to a room.
+
+| Param | Type | Notes |
+|-------|------|-------|
+| `clientId` | `string` | Unique client identifier |
+| `roomId` | `string` | Target room |
+| `ws` | `object` | WebSocket-like object with a `send(data)` method |
+
+**Returns:**
+- `{ ok: true }` — client joined (or re-joined, updating the socket reference)
+- `{ ok: false, reason: 'ROOM_FULL' }` — room has reached `maxRoomSize`
+
+**Performance note:** Re-joining an existing client (same `clientId`) only updates the socket reference and never increments the room size.
+
+---
+
+### `leave(clientId, roomId)`
+
+Remove a client from a specific room. Automatically deletes the room if it becomes empty,
+and removes the client's room-tracking entry if they are no longer in any room.
+
+---
+
+### `disconnectClient(clientId)`
+
+Remove a client from **every** room it belongs to in a single sweep. More efficient than
+calling `leave()` per room when a connection drops.
+
+```javascript
+// On WebSocket close:
+ws.on('close', () => roomManager.disconnectClient(clientId));
+```
+
+---
+
+### `broadcast(roomId, data)`
+
+Fan-out a message to every client currently in a room. Iterates the internal `Map`
+exactly once — callers do not need to fetch and loop the room themselves.
+
+```javascript
+roomManager.broadcast('lobby', JSON.stringify({ type: 'chat', text: 'hello' }));
+```
+
+| Param | Type | Notes |
+|-------|------|-------|
+| `roomId` | `string` | Target room (no-op if the room does not exist) |
+| `data` | `string \| Buffer` | Passed verbatim to each `ws.send()` |
+
+---
+
+### `getRoomSize(roomId) → number`
+
+O(1) accessor returning the number of clients currently in a room. Returns `0` if the
+room does not exist.
+
+```javascript
+const size = roomManager.getRoomSize('lobby'); // e.g. 4
+```
+
+---
+
+### `getClients(roomId) → Map<string, ws>`
+
+Return the live `Map<clientId, ws>` for a room. Returns an empty `Map` if the room does
+not exist — never returns `null` or `undefined`.
+
+```javascript
+for (const [clientId, ws] of roomManager.getClients('lobby')) {
+  ws.send(JSON.stringify({ type: 'roster', clientId }));
+}
+```
+
+> **Note:** The returned `Map` is a live reference to the internal data structure. Do not
+> mutate it directly — use `join()`, `leave()`, and `disconnectClient()` instead.
+
+---
+
+### Error frame format
+
+When `handleJoin` (from `server.js`) rejects a join due to capacity, it sends the
+following JSON frame to the rejected client's socket before returning:
+
+```json
+{
+  "type": "error",
+  "payload": {
+    "message": "Room is full",
+    "code": "ROOM_FULL"
+  }
+}
+```
+
