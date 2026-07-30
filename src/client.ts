@@ -102,6 +102,32 @@ export class ConduitClient {
    * @throws {UnsupportedChainError} if the wallet's `chainId` is on a
    *   different network than the one this client was initialised with.
    */
+  /**
+   * Pause an active stream (sender only).
+   *
+   * Freezes the stream clock so no new tokens accrue. The stream can be
+   * resumed later with {@link unpauseStream}.
+   *
+   * @param streamId - The numeric stream ID as a string (e.g. `"42"`).
+   * @returns The confirmed transaction hash.
+   */
+  async pauseStream(streamId: string): Promise<string> {
+    return this.streams.pause(streamId);
+  }
+
+  /**
+   * Resume a paused stream (sender only).
+   *
+   * Unfreezes the stream clock so tokens begin accruing again. The start
+   * and end times are shifted forward by the duration the stream was paused.
+   *
+   * @param streamId - The numeric stream ID as a string (e.g. `"42"`).
+   * @returns The confirmed transaction hash.
+   */
+  async unpauseStream(streamId: string): Promise<string> {
+    return this.streams.resume(streamId);
+  }
+
   setWallet(wallet: WalletAdapter): void {
     assertWalletNetworkMatch(wallet, this.config.network);
     this.config.wallet = wallet;

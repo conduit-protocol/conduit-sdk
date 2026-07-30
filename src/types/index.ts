@@ -2,6 +2,21 @@ import type { Signer } from '../signer.js';
 
 export type Network = 'mainnet' | 'testnet' | 'local';
 
+/**
+ * Enumerates the possible lifecycle states of a stream.
+ *
+ * - `ACTIVE`   — stream is live and funds are flowing.
+ * - `PAUSED`   — stream clock is frozen by the sender.
+ * - `CANCELLED`— stream has been cancelled; no further streaming.
+ * - `ENDED`    — stream reached its natural end time.
+ */
+export enum StreamState {
+  ACTIVE    = 'ACTIVE',
+  PAUSED    = 'PAUSED',
+  CANCELLED = 'CANCELLED',
+  ENDED     = 'ENDED',
+}
+
 export interface ConduitConfig {
   /** Network to connect to */
   network: Network;
