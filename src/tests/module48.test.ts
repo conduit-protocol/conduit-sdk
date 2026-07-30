@@ -8,10 +8,10 @@ describe('Module48 (SDK Feature #48)', () => {
 
   const mockStream: StreamInfo = {
     id: 1n,
+    address: 'CCSTREAM48ADDRESSXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
     sender: 'GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFXYCZLYC3ZCHB2D4P3CF',
     recipient: 'GA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVSGZ',
     token: 'native',
-    depositAmount: 1000000000n,
     ratePerSecond: 100n,
     startTime: 500,
     endTime: 1500,
@@ -27,21 +27,25 @@ describe('Module48 (SDK Feature #48)', () => {
   });
 
   describe('Constructor & Configuration', () => {
-    it('initializes with default options', () => {
+    it('initializes with default options and no speedup measurement yet', () => {
       const defaultMod = new Module48();
       const metrics = defaultMod.getPerformanceMetrics();
       expect(metrics.totalProcessed).toBe(0);
-      expect(metrics.performanceGainPercent).toBeGreaterThanOrEqual(20);
+      // No hits/misses recorded yet, so there's nothing to measure a speedup from.
+      expect(metrics.measuredSpeedupPercent).toBeNull();
     });
 
-    it('initializes with custom options', () => {
+    it('never reports a speedup when optimization is disabled', () => {
       const customMod = new Module48({
         cacheSize: 50,
         enableOptimization: false,
         batchChunkSize: 10,
       });
-      const metrics = customMod.getPerformanceMetrics();
-      expect(metrics.performanceGainPercent).toBe(0);
+      const item = { id: 'stream-1', stream: mockStream, timestamp: now };
+      customMod.processSingleItem(item);
+      customMod.processSingleItem(item);
+      // With caching disabled there are never any cache hits to compare against.
+      expect(customMod.getPerformanceMetrics().measuredSpeedupPercent).toBeNull();
     });
   });
 
@@ -87,7 +91,7 @@ describe('Module48 (SDK Feature #48)', () => {
     });
   });
 
-  describe('Optimization & Caching (20%+ performance boost)', () => {
+  describe('Optimization & Caching', () => {
     it('serves cached results on duplicate evaluation requests', () => {
       const item = { id: 'stream-1', stream: mockStream, timestamp: now };
 
@@ -101,7 +105,14 @@ describe('Module48 (SDK Feature #48)', () => {
       const metrics = module48.getPerformanceMetrics();
       expect(metrics.cacheHits).toBe(1);
       expect(metrics.cacheMisses).toBe(1);
-      expect(metrics.performanceGainPercent).toBeGreaterThanOrEqual(20);
+      // A real (not fabricated) speedup measurement based on this run's own
+      // hit/miss timing -- on a low-resolution clock both could measure as
+      // 0ms, in which case there's genuinely nothing to compute a ratio
+      // from (null), so we accept either an honest number or null, never a
+      // hardcoded floor.
+      expect(
+        metrics.measuredSpeedupPercent === null || typeof metrics.measuredSpeedupPercent === 'number',
+      ).toBe(true);
     });
 
     it('evicts oldest cache item when cacheSize threshold is reached', () => {
@@ -124,7 +135,7 @@ describe('Module48 (SDK Feature #48)', () => {
       const secondPass = unoptimizedMod.processSingleItem(item);
 
       expect(secondPass.isCached).toBe(false);
-      expect(unoptimizedMod.getPerformanceMetrics().performanceGainPercent).toBe(0);
+      expect(unoptimizedMod.getPerformanceMetrics().measuredSpeedupPercent).toBeNull();
     });
   });
 

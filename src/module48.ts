@@ -4,7 +4,7 @@ import { withdrawableLocal } from './utils.js';
 export interface Module48Config {
   /** Maximum number of calculated results to keep in the fast lookup cache */
   cacheSize?: number;
-  /** Enable 20%+ performance optimization via memoization and pre-allocated buffer processing */
+  /** Enable memoized calculation; actual speedup depends on hit rate — see `getPerformanceMetrics()` for a measured value */
   enableOptimization?: boolean;
   /** Preferred chunk size for batch processing stream items */
   batchChunkSize?: number;
@@ -28,15 +28,22 @@ export interface Module48Metrics {
   totalProcessed: number;
   cacheHits: number;
   cacheMisses: number;
-  performanceGainPercent: number;
+  /**
+   * Measured, not assumed: `(avgMissMs - avgHitMs) / avgMissMs * 100`, based
+   * on this instance's own accumulated timings. `null` until at least one
+   * hit and one miss have both been recorded (nothing to compare yet).
+   */
+  measuredSpeedupPercent: number | null;
   averageExecutionTimeMs: number;
 }
 
 /**
- * Module 48: High-Performance SDK Streaming Analytics Engine
+ * Module 48: stream analytics batch-evaluation helper.
  *
- * Implements Feature #48 with optimized memoized calculation algorithms
- * delivering >20% throughput enhancement for batch stream evaluation.
+ * Implements Feature #48 with memoized withdrawable/progress calculation.
+ * Speedup from caching is workload-dependent (proportional to cache hit
+ * rate); call `getPerformanceMetrics()` for this instance's own measured
+ * hit/miss timing rather than assuming a fixed percentage.
  */
 export class Module48 {
   private readonly cacheSize: number;
@@ -48,6 +55,8 @@ export class Module48 {
   private cacheHits = 0;
   private cacheMisses = 0;
   private totalExecutionTimeMs = 0;
+  private hitExecutionTimeMs = 0;
+  private missExecutionTimeMs = 0;
 
   constructor(config: Module48Config = {}) {
     this.cacheSize = config.cacheSize ?? 1000;
@@ -83,11 +92,13 @@ export class Module48 {
    * Evaluate a single stream item with fast-path cache lookup.
    */
   public processSingleItem(item: StreamBatchItem): Module48Result {
+    const start = performance.now();
     const nowSec = item.timestamp ?? Math.floor(Date.now() / 1000);
     const cacheKey = `${item.id}_${item.stream.withdrawn.toString()}_${item.stream.paused ? 1 : 0}_${nowSec}`;
 
     if (this.enableOptimization && this.cache.has(cacheKey)) {
       this.cacheHits++;
+      this.hitExecutionTimeMs += performance.now() - start;
       const cached = this.cache.get(cacheKey)!;
       return {
         id: item.id,
@@ -125,6 +136,8 @@ export class Module48 {
       this.cache.set(cacheKey, { withdrawable, progress, computedAt });
     }
 
+    this.missExecutionTimeMs += performance.now() - start;
+
     return {
       id: item.id,
       withdrawable,
@@ -151,21 +164,26 @@ export class Module48 {
     this.cacheMisses = 0;
     this.totalProcessed = 0;
     this.totalExecutionTimeMs = 0;
+    this.hitExecutionTimeMs = 0;
+    this.missExecutionTimeMs = 0;
   }
 
   /**
-   * Retrieve performance metrics showing >20% throughput gain.
+   * Retrieve performance metrics, including a measured (not assumed) cache speedup.
    */
   public getPerformanceMetrics(): Module48Metrics {
-    const totalRequests = this.cacheHits + this.cacheMisses;
-    const hitRate = totalRequests > 0 ? this.cacheHits / totalRequests : 0;
-    const performanceGainPercent = Math.round(hitRate * 35 + 20); // Baseline 20% + hit boost
+    const avgHitMs = this.cacheHits > 0 ? this.hitExecutionTimeMs / this.cacheHits : null;
+    const avgMissMs = this.cacheMisses > 0 ? this.missExecutionTimeMs / this.cacheMisses : null;
+    const measuredSpeedupPercent =
+      avgHitMs !== null && avgMissMs !== null && avgMissMs > 0
+        ? ((avgMissMs - avgHitMs) / avgMissMs) * 100
+        : null;
 
     return {
       totalProcessed: this.totalProcessed,
       cacheHits: this.cacheHits,
       cacheMisses: this.cacheMisses,
-      performanceGainPercent: this.enableOptimization ? performanceGainPercent : 0,
+      measuredSpeedupPercent: this.enableOptimization ? measuredSpeedupPercent : null,
       averageExecutionTimeMs: this.totalProcessed > 0 ? this.totalExecutionTimeMs / this.totalProcessed : 0,
     };
   }
