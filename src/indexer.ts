@@ -16,6 +16,19 @@ export interface IndexerSubscription {
   unsubscribe: () => void;
 }
 
+/**
+ * Minimal shape of a `graphql-transport-ws` server message. Every member is
+ * `unknown` because the payload crosses a network boundary — `JSON.parse`
+ * hands back `any`, which would silently defeat `noImplicitAny` for every
+ * property read below.
+ */
+interface GraphQLServerMessage {
+  type?: unknown;
+  payload?: unknown;
+  data?: unknown;
+  errors?: unknown;
+}
+
 export class GraphQLIndexer {
   private endpoint: string;
   private activeSubscriptions: Set<IndexerSubscription> = new Set();
@@ -69,7 +82,7 @@ export class GraphQLIndexer {
       throw new Error(`GraphQL query failed with status ${response.status}: ${response.statusText}`);
     }
 
-    return await response.json();
+    return (await response.json()) as unknown;
   }
 
   subscribe(options: GraphQLSubscriptionOptions): IndexerSubscription {
@@ -166,8 +179,12 @@ export class GraphQLIndexer {
         socket.onmessage = (event: MessageEvent) => {
           if (unsubscribed || this.isDestroyed) return;
           try {
-            const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
-            if (!data || typeof data !== 'object') return;
+            const raw: unknown =
+              typeof event.data === 'string'
+                ? (JSON.parse(event.data) as unknown)
+                : (event.data as unknown);
+            if (!raw || typeof raw !== 'object') return;
+            const data = raw as GraphQLServerMessage;
 
             if (data.type === 'next' || data.type === 'data') {
               const payload = data.payload ?? data.data;
@@ -233,8 +250,12 @@ export class GraphQLIndexer {
                     const dataStr = trimmed.slice(5).trim();
                     if (dataStr === '[DONE]') break;
                     try {
-                      const parsed = JSON.parse(dataStr);
-                      options.onData(parsed.data ?? parsed);
+                      const parsed = JSON.parse(dataStr) as unknown;
+                      const inner =
+                        parsed && typeof parsed === 'object'
+                          ? (parsed as GraphQLServerMessage).data
+                          : undefined;
+                      options.onData(inner ?? parsed);
                     } catch {
                       // Ignore malformed line
                     }

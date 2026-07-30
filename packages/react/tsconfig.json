@@ -6,6 +6,8 @@
     "moduleResolution": "Bundler",
     "jsx": "react-jsx",
     "strict": true,
+    "noImplicitAny": true,
+    "useUnknownInCatchVariables": true,
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
     "forceConsistentCasingInFileNames": true,
