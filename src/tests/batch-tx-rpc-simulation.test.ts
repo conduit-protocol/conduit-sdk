@@ -92,7 +92,12 @@ describe('buildBatchTransactions() — RPC-prepared path', () => {
     const { rpcUrl, contractId, sourceAccount, network } = CONTEXT;
     const built = await buildBatchTransactions(
       [{ method: 'a' }, { method: 'b' }],
-      { rpcUrl, contractId, sourceAccount, network },
+      {
+        contractId,
+        sourceAccount,
+        ...(rpcUrl !== undefined ? { rpcUrl } : {}),
+        ...(network !== undefined ? { network } : {}),
+      },
     );
 
     expect(mockGetAccount).toHaveBeenCalledTimes(1);
@@ -123,8 +128,8 @@ describe('buildBatchTransactions() — RPC-prepared path', () => {
     const built = await buildBatchTransactions([{ method: 'ping' }], {
       contractId,
       sourceAccount,
-      network,
-      sequence,
+      ...(network !== undefined ? { network } : {}),
+      ...(sequence !== undefined ? { sequence } : {}),
     });
 
     expect(mockSimulateTransaction).not.toHaveBeenCalled();
