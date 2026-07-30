@@ -16,6 +16,19 @@ class Keypair {
   }
 }
 
+class Account {
+  constructor(accountId, sequence) {
+    this.accountId = () => accountId;
+    this._sequence = sequence;
+  }
+  sequenceNumber() {
+    return this._sequence;
+  }
+  incrementSequenceNumber() {
+    this._sequence = (BigInt(this._sequence) + 1n).toString();
+  }
+}
+
 class Address {
   constructor(addr) { this.addr = addr; }
   toScVal() { return {}; }
@@ -67,6 +80,7 @@ class Transaction {
 export {
   StrKey,
   Keypair,
+  Account,
   Address,
   SorobanRpc,
   nativeToScVal,
