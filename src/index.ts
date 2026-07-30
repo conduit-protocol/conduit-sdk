@@ -49,6 +49,7 @@ export {
 
 // RPC server lifecycle
 export { getServer, clearServerCache } from './soroban.js';
+export { getTokenDecimals, clearTokenDecimalsCache } from './soroban.js';
 
 export {
   formatAddress,

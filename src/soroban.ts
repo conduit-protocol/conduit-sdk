@@ -243,11 +243,25 @@ export async function simulateReadOnly(
   return xdr.ScVal.fromXDR(result.result.retval.toXDR());
 }
 
+// ── Token decimals cache ─────────────────────────────────────────────────────
+// A token's `decimals()` is immutable for the lifetime of its contract, so
+// repeatedly simulating it (e.g. once per `StreamsModule.create()` call for
+// the same token) is a pure waste of an RPC round-trip. Cache the in-flight
+// promise (not just the resolved value) so concurrent callers for the same
+// token also dedupe onto a single simulation.
+
+const _tokenDecimalsCache = new Map<string, Promise<number>>();
+
 /**
  * Query a token contract's `decimals()` — part of the standard Stellar
  * Asset / SEP-41 token interface every `CreateStreamParams.token` must
  * implement. Callers must not assume 7 decimals (the native XLM/Stellar
  * Asset Contract default) for arbitrary token addresses.
+ *
+ * Results are cached per `rpcUrl:tokenId` for the lifetime of the process,
+ * since a token's decimals cannot change after deployment. Use
+ * `clearTokenDecimalsCache()` to reset (e.g. in tests or when a fresh
+ * simulation is required).
  */
 export async function getTokenDecimals(
   rpcUrl:     string,
@@ -255,9 +269,33 @@ export async function getTokenDecimals(
   callerAddr: string,
   tokenId:    string,
 ): Promise<number> {
-  const tx  = await buildContractCallTx(rpcUrl, passphrase, callerAddr, tokenId, 'decimals', []);
-  const val = await simulateReadOnly(rpcUrl, passphrase, tx);
-  return val.u32();
+  const cacheKey = `${rpcUrl}:${tokenId}`;
+  const cached = _tokenDecimalsCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const promise = (async () => {
+    const tx  = await buildContractCallTx(rpcUrl, passphrase, callerAddr, tokenId, 'decimals', []);
+    const val = await simulateReadOnly(rpcUrl, passphrase, tx);
+    return val.u32();
+  })();
+
+  _tokenDecimalsCache.set(cacheKey, promise);
+  promise.catch(() => {
+    // Don't cache failed simulations — let a later call retry.
+    _tokenDecimalsCache.delete(cacheKey);
+  });
+
+  return promise;
+}
+
+/**
+ * Clear the token decimals cache. Useful in tests or when switching network
+ * configurations that should invalidate cached values.
+ */
+export function clearTokenDecimalsCache(): void {
+  _tokenDecimalsCache.clear();
 }
 
 /** Convert an ScVal i128 to bigint */
