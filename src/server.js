@@ -20,7 +20,7 @@ function handleJoin(clientId, roomId, ws) {
 }
 
 function handleClose(clientId) {
-  roomManager.leaveAll(clientId);
+  roomManager.disconnectClient(clientId);
 }
 
 module.exports = { handleJoin, handleClose, roomManager };
