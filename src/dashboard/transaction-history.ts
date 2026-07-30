@@ -438,15 +438,51 @@ export function transactionHistoryReducer(
 // Selectors
 // ---------------------------------------------------------------------------
 
-/** Applies the active filters. Safe against a malformed/absent state. */
-export function selectFilteredTransactions(
+/**
+ * Memoisation for the filter/sort pipeline (#43).
+ *
+ * A single dashboard render calls `selectViewStatus`, `selectTotalPages` and
+ * `selectVisibleTransactions`, and the reducer calls the filter again on every
+ * `SET_PAGE` — so the naive implementation walked the whole page of rows four
+ * times per interaction and re-sorted it on every page step.
+ *
+ * The cache is keyed on the identity of `state.transactions` (not on the state
+ * object) because pagination and page-size changes produce a *new state* that
+ * reuses the *same* rows array — so paging through a loaded page is now pure
+ * cache hits with no filter and no sort. A new indexer payload allocates a new
+ * array via `normalizeTransactions`, which misses the cache and recomputes;
+ * a filter change is caught by the signature check. `WeakMap` keeps entries
+ * collectable as soon as the rows array is dropped.
+ *
+ * This assumes records are treated as immutable, which holds throughout this
+ * module: the reducer never mutates state and normalisation always allocates
+ * fresh records. Mutating a record in place would serve a stale projection.
+ */
+interface SelectorCacheEntry {
+  signature: string;
+  filtered: TransactionRecord[];
+  /** Sorted copy, computed lazily — only `selectVisibleTransactions` needs it. */
+  sorted: TransactionRecord[] | null;
+}
+
+const NO_TRANSACTIONS: readonly TransactionRecord[] = Object.freeze([]);
+
+const selectorCache = new WeakMap<readonly TransactionRecord[], SelectorCacheEntry>();
+
+function selectorEntry(
   state: TransactionHistoryState | undefined,
-): TransactionRecord[] {
-  const transactions = Array.isArray(state?.transactions) ? state.transactions : [];
+): SelectorCacheEntry {
+  const transactions: readonly TransactionRecord[] = Array.isArray(state?.transactions)
+    ? state.transactions
+    : NO_TRANSACTIONS;
   const filters = { ...INITIAL_TRANSACTION_FILTERS, ...(state?.filters ?? {}) };
   const search = asString(filters.search).trim().toLowerCase();
+  const signature = `${filters.status} ${filters.kind} ${filters.direction} ${search}`;
 
-  return transactions.filter((tx) => {
+  const cached = selectorCache.get(transactions);
+  if (cached !== undefined && cached.signature === signature) return cached;
+
+  const filtered = transactions.filter((tx) => {
     if (!tx) return false;
     if (filters.status !== 'ALL' && tx.status !== filters.status) return false;
     if (filters.kind !== 'ALL' && tx.kind !== filters.kind) return false;
@@ -459,14 +495,27 @@ export function selectFilteredTransactions(
       asString(field).toLowerCase().includes(search),
     );
   });
+
+  const entry: SelectorCacheEntry = { signature, filtered, sorted: null };
+  selectorCache.set(transactions, entry);
+  return entry;
+}
+
+/** Applies the active filters. Safe against a malformed/absent state. */
+export function selectFilteredTransactions(
+  state: TransactionHistoryState | undefined,
+): TransactionRecord[] {
+  return selectorEntry(state).filtered;
 }
 
 /** Filtered rows, newest first, sliced to the current page. */
 export function selectVisibleTransactions(
   state: TransactionHistoryState | undefined,
 ): TransactionRecord[] {
-  const filtered = selectFilteredTransactions(state);
-  const sorted = [...filtered].sort((a, b) => b.timestamp - a.timestamp);
+  const entry = selectorEntry(state);
+  const sorted =
+    entry.sorted ??
+    (entry.sorted = [...entry.filtered].sort((a, b) => b.timestamp - a.timestamp));
 
   const pageSize = Math.max(1, Math.trunc(state?.pageSize ?? DEFAULT_PAGE_SIZE));
   const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
@@ -480,7 +529,7 @@ export function selectVisibleTransactions(
 export function selectTotalPages(
   state: TransactionHistoryState | undefined,
 ): number {
-  const filtered = selectFilteredTransactions(state);
+  const filtered = selectorEntry(state).filtered;
   const pageSize = Math.max(1, Math.trunc(state?.pageSize ?? DEFAULT_PAGE_SIZE));
   return Math.max(1, Math.ceil(filtered.length / pageSize));
 }
