@@ -7,11 +7,11 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const { RoomManager } = require('../room-manager.js') as { RoomManager: new (opts?: { maxRoomSize?: number }) => IRoomManager };
 
 // Minimal typing for test ergonomics
-interface WS { send: ReturnType<typeof vi.fn> }
+interface WS { send: ReturnType<typeof vi.fn<(data: string) => void>> }
 interface IRoomManager {
   _maxRoomSize: number;
   _rooms: Map<string, Map<string, WS>>;
