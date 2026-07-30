@@ -1,0 +1,80 @@
+// Minimal shim of @stellar/stellar-sdk for browser compatibility testing.
+// Only provides the exports that the Conduit SDK actually imports.
+
+class StrKey {
+  static isValidEd25519PublicKey(addr) {
+    return typeof addr === 'string' && addr.length === 56 && addr.startsWith('G');
+  }
+  static isValidContract(addr) {
+    return typeof addr === 'string' && addr.length === 56 && addr.startsWith('C');
+  }
+}
+
+class Keypair {
+  static fromSecret(secret) {
+    return { publicKey: () => 'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF' };
+  }
+}
+
+class Address {
+  constructor(addr) { this.addr = addr; }
+  toScVal() { return {}; }
+  static fromScVal() { return { toString: () => '' }; }
+}
+
+const SorobanRpc = {
+  Server: class {
+    constructor() {}
+    simulateTransaction() { return {}; }
+    sendTransaction() { return {}; }
+    getTransaction() { return {}; }
+  },
+  Api: {
+    isSimulationError() { return false; },
+    GetTransactionStatus: { SUCCESS: 'SUCCESS', FAILED: 'FAILED' },
+  },
+  assembleTransaction() { return { build: () => ({ sign: () => {}, toXDR: () => '' }) }; },
+};
+
+function nativeToScVal() { return {}; }
+function boolToScVal() { return {}; }
+
+const xdr = {
+  ScVal: { fromXDR: () => ({ map: () => [], sym: () => null, str: () => null, b: () => false }) },
+};
+
+const Networks = { PUBLIC: 'public', TESTNET: 'testnet' };
+
+class Contract {
+  constructor(address) { this.address = address; }
+}
+
+class TransactionBuilder {
+  static fromXDR() { return {}; }
+}
+
+const BASE_FEE = '100';
+
+class Transaction {
+  constructor(xdr, passphrase) {
+    this.xdr = xdr;
+    this.passphrase = passphrase;
+  }
+  sign() {}
+  toXDR() { return ''; }
+}
+
+export {
+  StrKey,
+  Keypair,
+  Address,
+  SorobanRpc,
+  nativeToScVal,
+  boolToScVal,
+  xdr,
+  Transaction,
+  Networks,
+  Contract,
+  TransactionBuilder,
+  BASE_FEE,
+};

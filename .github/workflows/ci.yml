@@ -58,6 +58,22 @@ jobs:
       - name: Verify dist
         run: node -e "require('./dist/cjs/index.js')"
 
+  e2e-browser:
+    name: Browser compatibility (E2E)
+    runs-on: ubuntu-latest
+    needs: [build]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium firefox webkit
+      - run: npm run test:e2e
+
   react-package:
     name: "@streamfi/react"
     runs-on: ubuntu-latest

@@ -34,6 +34,7 @@
     "dev": "tsc -p tsconfig.build.json --watch",
     "test": "vitest run",
     "test:cli": "npm --prefix create-streamfi-app test",
+    "test:e2e": "playwright test --config tests/browser/playwright.config.ts",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext .ts"
@@ -42,6 +43,7 @@
     "@stellar/stellar-sdk": "^12.0.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.0",
     "@rollup/plugin-node-resolve": "^15.2.3",
     "@rollup/plugin-terser": "^1.0.0",
     "@rollup/plugin-typescript": "^11.1.6",
@@ -51,6 +53,7 @@
     "@typescript-eslint/parser": "^7.14.0",
     "@vitest/coverage-v8": "^4.1.10",
     "eslint": "^8.57.0",
+    "playwright": "^1.62.0",
     "rollup": "^4.18.0",
     "rollup-plugin-visualizer": "^7.0.1",
     "typescript": "^5.5.3",
