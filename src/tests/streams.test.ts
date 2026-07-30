@@ -102,6 +102,12 @@ describe('StreamsModule — keypair guard', () => {
     await expect(sdk.topUp(1n, 1000n)).rejects.toThrow('keypair');
   });
 
+  it('topUpStream() throws without keypair', async () => {
+    const { StreamsModule } = await import('../streams.js');
+    const sdk = new StreamsModule(makeConfig(false));
+    await expect(sdk.topUpStream('1', '1000')).rejects.toThrow('keypair');
+  });
+
   it('clawback() throws without keypair', async () => {
     const { StreamsModule } = await import('../streams.js');
     const sdk = new StreamsModule(makeConfig(false));

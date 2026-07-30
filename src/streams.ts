@@ -296,6 +296,11 @@ export class StreamsModule {
     ]);
   }
 
+  /** Top up a stream using string parameters (convenience wrapper). */
+  async topUpStream(streamId: string, amount: string): Promise<string> {
+    return this.topUp(streamId, BigInt(amount));
+  }
+
   /**
    * Clawback unstreamed tokens (sender; only if enabled at creation).
    * Returns the amount reclaimed (simulated before submission).

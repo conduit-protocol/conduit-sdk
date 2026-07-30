@@ -338,6 +338,13 @@ describe('StreamsModule — withdraw/cancel/pause/resume/topUp success paths', (
     expect(hash).toBe('deadbeef');
   });
 
+  it('topUpStream() returns the confirmed transaction hash', async () => {
+    const { StreamsModule } = await import('../streams.js');
+    const sdk = new StreamsModule(makeConfig());
+    const hash = await runThroughFirstPoll(() => sdk.topUpStream('1', '500'));
+    expect(hash).toBe('deadbeef');
+  });
+
   it('throws when the send is rejected', async () => {
     mockSend.mockResolvedValue({ status: 'ERROR', errorResult: 'boom' });
     const { StreamsModule } = await import('../streams.js');
