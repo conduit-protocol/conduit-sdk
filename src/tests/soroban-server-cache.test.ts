@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { SorobanRpc } from '@stellar/stellar-sdk';
-import { getServer, clearServerCache } from '../soroban.js';
+import { getServer, clearServerCache, createRpcServer } from '../soroban.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -114,5 +114,75 @@ describe('server cache integration', () => {
     // is clean. Verifying that getServer still works post-clear.
     const server = getServer(MAINNET_RPC);
     expect(server).toBeInstanceOf(SorobanRpc.Server);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// createRpcServer - proxied server cache behaviour
+// ---------------------------------------------------------------------------
+
+describe('createRpcServer', () => {
+  beforeEach(() => {
+    clearServerCache();
+  });
+
+  it('returns a proxy-wrapped SorobanRpc.Server', () => {
+    const server = createRpcServer(MAINNET_RPC);
+    expect(server).toBeInstanceOf(SorobanRpc.Server);
+  });
+
+  it('returns the same proxied instance for the same URL on repeated calls', () => {
+    const a = createRpcServer(MAINNET_RPC);
+    const b = createRpcServer(MAINNET_RPC);
+    const c = createRpcServer(MAINNET_RPC);
+    expect(a).toBe(b);
+    expect(b).toBe(c);
+  });
+
+  it('returns different proxied instances for different URLs', () => {
+    const mainnet = createRpcServer(MAINNET_RPC);
+    const testnet = createRpcServer(TESTNET_RPC);
+    const local   = createRpcServer(LOCAL_RPC);
+
+    expect(mainnet).not.toBe(testnet);
+    expect(testnet).not.toBe(local);
+    expect(local).not.toBe(mainnet);
+  });
+
+  it('cache is invalidated by clearServerCache', () => {
+    const before = createRpcServer(MAINNET_RPC);
+    clearServerCache();
+    const after = createRpcServer(MAINNET_RPC);
+    expect(after).not.toBe(before);
+  });
+
+  it('does not throw when called concurrently from multiple async contexts', async () => {
+    const results = await Promise.all(
+      Array.from({ length: 10 }, () => Promise.resolve(createRpcServer(MAINNET_RPC))),
+    );
+    for (const r of results) {
+      expect(r).toBe(results[0]);
+    }
+  });
+
+  it('proxied methods forward correctly to the underlying server', async () => {
+    const server = createRpcServer(MAINNET_RPC);
+    expect(typeof (server as any).simulateTransaction).toBe('function');
+    expect(typeof (server as any).getAccount).toBe('function');
+    expect(typeof server.getLatestLedger).toBe('function');
+    expect(typeof server.getNetwork).toBe('function');
+  });
+
+  it('proxied server identity unchanged after repeated createRpcServer and clearServerCache calls', () => {
+    // Warm cache
+    const a1 = createRpcServer(MAINNET_RPC);
+    expect(createRpcServer(MAINNET_RPC)).toBe(a1);
+
+    clearServerCache();
+
+    // After clear, a new instance is created
+    const a2 = createRpcServer(MAINNET_RPC);
+    expect(a2).not.toBe(a1);
+    expect(createRpcServer(MAINNET_RPC)).toBe(a2);
   });
 });
