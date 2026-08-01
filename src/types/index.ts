@@ -140,3 +140,55 @@ export interface BatchWithdrawResult {
   txHash?: string;
   error?: string;
 }
+
+// -- Fee estimation ----------------------------------------------------------
+
+export type StreamOperation =
+  | {
+      type: 'create';
+      token: string;
+      sender: string;
+      recipient: string;
+      depositAmount: string;
+      durationSeconds?: number;
+      ratePerSecond?: string;
+      startTime?: number;
+      clawbackEnabled?: boolean;
+    }
+  | {
+      type: 'withdraw';
+      streamId: bigint | string;
+      amount?: bigint;
+    }
+  | {
+      type: 'cancel';
+      streamId: bigint | string;
+    }
+  | {
+      type: 'pause';
+      streamId: bigint | string;
+    }
+  | {
+      type: 'resume';
+      streamId: bigint | string;
+    }
+  | {
+      type: 'topUp';
+      streamId: bigint | string;
+      amount: bigint;
+    }
+  | {
+      type: 'clawback';
+      streamId: bigint | string;
+    };
+
+export interface FeeEstimate {
+  /** Total estimated fee in stroops */
+  totalFee: number;
+  /** Resource fee component (CPU/RAM) in stroops */
+  resourceFee: number;
+  /** Base (inclusion) fee component in stroops */
+  baseFee: number;
+  /** Estimated CPU instructions */
+  instructions: number;
+}
