@@ -143,6 +143,7 @@ export interface BatchWithdrawResult {
 
 // -- Fee estimation ----------------------------------------------------------
 
+/** Discriminated union describing the stream operation to estimate a fee for. */
 export type StreamOperation =
   | {
       type: 'create';
