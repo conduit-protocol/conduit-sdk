@@ -111,7 +111,15 @@ export function subscribeToStream(
       }
     } catch (err) {
       // Swallow polling errors; the subscription continues
-      console.warn('[conduit-sdk] event polling error:', err);
+      const error = err instanceof Error ? err : new Error(String(err));
+      console.warn('[conduit-sdk] event polling error:', error);
+
+      // A consumer error handler must not stop future polling.
+      try {
+        handlers.onError?.(error);
+      } catch (handlerError) {
+        console.warn('[conduit-sdk] event polling onError handler error:', handlerError);
+      }
     }
 
     if (!stopped) timer = setTimeout(poll, pollInterval);

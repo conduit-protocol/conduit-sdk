@@ -122,6 +122,58 @@ describe('subscribeToStream', () => {
     warn.mockRestore();
   });
 
+  it('surfaces polling errors through onError', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const pollingError = new Error('rpc unavailable');
+    const onError = vi.fn();
+    mockGetEvents.mockRejectedValueOnce(pollingError).mockResolvedValue({ events: [] });
+    const { subscribeToStream } = await import('../events.js');
+
+    const sub = subscribeToStream('http://localhost:8000', 'CSTREAM', {
+      onError,
+      pollInterval: 1000,
+    });
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledWith(pollingError));
+
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.waitFor(() => expect(mockGetEvents).toHaveBeenCalledTimes(2));
+
+    sub.unsubscribe();
+    warn.mockRestore();
+  });
+
+  it('normalizes non-Error polling failures before calling onError', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const onError = vi.fn();
+    mockGetEvents.mockRejectedValueOnce('rpc unavailable');
+    const { subscribeToStream } = await import('../events.js');
+
+    const sub = subscribeToStream('http://localhost:8000', 'CSTREAM', { onError });
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledTimes(1));
+
+    expect(onError.mock.calls[0]?.[0]).toEqual(new Error('rpc unavailable'));
+    sub.unsubscribe();
+    warn.mockRestore();
+  });
+
+  it('keeps polling when onError itself throws', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    mockGetEvents.mockRejectedValueOnce(new Error('rpc unavailable')).mockResolvedValue({ events: [] });
+    const { subscribeToStream } = await import('../events.js');
+
+    const sub = subscribeToStream('http://localhost:8000', 'CSTREAM', {
+      onError: () => { throw new Error('consumer handler failed'); },
+      pollInterval: 1000,
+    });
+    await vi.waitFor(() => expect(warn).toHaveBeenCalledTimes(2));
+
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.waitFor(() => expect(mockGetEvents).toHaveBeenCalledTimes(2));
+
+    sub.unsubscribe();
+    warn.mockRestore();
+  });
+
   it('unsubscribe stops further polling', async () => {
     mockGetEvents.mockResolvedValue({ events: [] });
     const { subscribeToStream } = await import('../events.js');
