@@ -55,8 +55,28 @@ function assertWalletNetworkMatch(
 
 export class ConduitClient {
   readonly streams:  StreamsModule;
-  readonly factory:  FactoryModule;
   readonly governor: GovernorModule;
+
+  /**
+   * Access the DripFactory read-query module.
+   *
+   * @throws {Error} if `factoryAddress` was not supplied in `ConduitConfig`.
+   *   Pass `factoryAddress` to the constructor to enable factory queries:
+   *   ```ts
+   *   new ConduitClient({ network: 'testnet', factoryAddress: 'C...' })
+   *   ```
+   */
+  get factory(): FactoryModule {
+    if (!this._factory) {
+      // Construct lazily so that callers who don't use factory queries
+      // (e.g. read-only stream operations) are not forced to supply
+      // factoryAddress.  FactoryModule's constructor will throw with a
+      // clear error if factoryAddress is missing.
+      this._factory = new FactoryModule(this.config);
+    }
+    return this._factory;
+  }
+  private _factory: FactoryModule | undefined;
 
   private readonly config: Required<Pick<ConduitConfig, 'network' | 'rpcUrl'>> & ConduitConfig;
 
@@ -78,7 +98,6 @@ export class ConduitClient {
     }
 
     this.streams  = new StreamsModule(this.config);
-    this.factory  = new FactoryModule(this.config);
     this.governor = new GovernorModule(this.config);
   }
 

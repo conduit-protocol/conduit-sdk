@@ -18,6 +18,14 @@ function getKeypair(): Keypair | undefined {
   return Keypair.fromSecret(secret);
 }
 
+function getFactoryAddress(): string | undefined {
+  // FACTORY_ADDRESS is the deployed DripFactory contract ID for the chosen
+  // network. It must be set for any factory query (list, count, resolve) to
+  // work.  Not NEXT_PUBLIC_-prefixed because it is only used in Server
+  // Actions — no reason to ship it to every browser.
+  return process.env.FACTORY_ADDRESS;
+}
+
 let _client: ConduitClient | null = null;
 
 export function getClient(): ConduitClient {
@@ -25,6 +33,7 @@ export function getClient(): ConduitClient {
   _client = new ConduitClient({
     network: getNetwork(),
     keypair: getKeypair(),
+    factoryAddress: getFactoryAddress(),
   });
   return _client;
 }
