@@ -487,7 +487,16 @@ A helper class to build stream configurations with method chaining.
 * `sender(address: string): this` - Sets the sender address.
 * `recipient(address: string): this` - Sets the recipient address.
 * `amount(val: number): this` - Sets the deposit amount in the smallest unit (stroops).
-* `build(): StreamConfig` - Validates and returns the built stream configuration. Throws if any required field is missing.
+* `ratePerSecond(val: number | bigint): this` - Sets the stream rate in stroops per second, as an alternative to `amount()`-only streams. Accepts a `number` or `bigint`; `bigint` values are serialised to strings before network submission to avoid Safari/WebKit `JSON.stringify` quirks.
+* `build(): StreamConfig` - Validates and returns the built stream configuration. Throws if any required field is missing. Includes `ratePerSecond` in the result when it was set.
+* `submit(submitFn, options?): Promise<unknown>` - Builds the payload and submits it through `submitFn` with automatic retries (exponential backoff), concurrency control via an internal semaphore, a pending queue with backpressure, and `AbortSignal` support. Throws if the builder was destroyed or the queue is full.
+
+  Options (`SubmitOptions`):
+  * `maxRetries?: number` - Max retry attempts per payload (default `3`).
+  * `retryDelayMs?: number` - Base backoff delay in ms, doubled per retry (default `100`).
+  * `concurrency?: number` - Max concurrent in-flight submissions (default `10`).
+  * `maxQueueSize?: number` - Max pending queue size before backpressure kicks in (default `100`).
+  * `signal?: AbortSignal` - Aborts an in-flight submission.
 
 ```typescript
 import { StreamBuilder } from '@conduit-protocol/sdk';
@@ -498,6 +507,22 @@ const stream = new StreamBuilder()
   .recipient('GB...')
   .amount(1000)
   .build();
+
+// ratePerSecond is an alternative to amount():
+const drip = new StreamBuilder()
+  .token('USDC')
+  .sender('GD...')
+  .recipient('GB...')
+  .ratePerSecond(10n) // 10 stroops/sec
+  .build();
+
+// submit() handles retries, backpressure and abort for you:
+const result = await new StreamBuilder()
+  .token('USDC')
+  .sender('GD...')
+  .recipient('GB...')
+  .amount(1000)
+  .submit(async (payload) => submitToNetwork(payload), { maxRetries: 5 });
 ```
 
 ### `ConduitBatcher`

@@ -7,6 +7,8 @@ All notable changes are documented here. Format based on [Keep a Changelog](http
 ### Added
 - `Module36` stream snapshot diff engine with LRU memoization for Feature #36 (#370); `getPerformanceMetrics()` reports an honest, workload-dependent measured speedup rather than a fixed percentage
 - `Module26` stream portfolio aggregator with LRU memoization for Feature #26 (#360); `getPerformanceMetrics()` reports an honest, workload-dependent measured speedup rather than a fixed percentage
+- Direct unit tests closing the `src/soroban.ts` test gaps: `queryXlmBalance()` (mocked `simulateTransaction` responses, incl. the error path) and `estimateRequiredFee()` (fallback value + `minResourceFee`/`fee` extraction shapes) (#460, #461)
+- Direct unit tests for `resolvePassphrase()` covering explicit passphrase present/blank, named network known/unknown, and neither-provided branches (#462)
 
 ### Performance
 - `FactoryModule.streamAddress()` now caches resolved stream→contract-address lookups in-memory, since the mapping is fixed at stream creation and never changes. Eliminates redundant RPC round trips on every `StreamsModule` read/write operation (`get`, `withdraw`, `cancel`, `pause`, `resume`, `topUp`, `clawback`) and on each page of `list()`, which previously re-resolved the same address for every stream on every call.
@@ -15,6 +17,7 @@ All notable changes are documented here. Format based on [Keep a Changelog](http
 ### Documentation
 - Added an API reference section for `GraphQLIndexer`, which was previously exported but undocumented.
 - Added a "Wallet Adapters" API reference section documenting `KeypairWalletAdapter`.
+- Documented `StreamBuilder.ratePerSecond()` and `StreamBuilder.submit()` (with full `SubmitOptions`) in `docs/api.md`, previously omitted from the Fluent Builder reference (#463).
 - Documented `ConduitClient`'s `pauseStream()`, `unpauseStream()`, and `setWallet()` convenience methods in `docs/api.md`, and fixed `setWallet()`'s JSDoc block, which had been orphaned above `pauseStream()`/`unpauseStream()` and left `setWallet()` itself undocumented.
 
 ### Fixed
