@@ -28,7 +28,6 @@ indexer.ts         — GraphQLIndexer: query() + subscribe() (WebSocket, SSE fal
 dashboard/transaction-history.ts
                    — framework-agnostic reducer + selectors for the Transaction History view
                       (normalisation, filtering, sorting, pagination — see "Selector memoisation" below)
-contracts/*-abi.ts — generated-style ABI/method-name constants per contract
 ```
 
 `ConduitClient` is a thin composition root — it resolves the RPC URL (`config.rpcUrl ??

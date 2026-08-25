@@ -678,9 +678,15 @@ See [`CONTRIBUTING.md`](./CONTRIBUTING.md). For the module map and call flow, se
 
 ## Configuration
 
-The RoomManager limits can be configured via environment variables.
+The SDK can be configured via environment variables or explicit constructor options in `ConduitClient`. A template is provided in [`.env.example`](./.env.example).
 
-* `MAX_ROOM_SIZE`: Maximum number of clients allowed in a single room (default: Infinity).
+* `STELLAR_SECRET`: Stellar secret key for signing transactions (keep secure; server-side only).
+* `NEXT_PUBLIC_NETWORK` / `CONDUIT_NETWORK`: Stellar network selection (`testnet`, `mainnet`, or `local`).
+* `SOROBAN_RPC_URL` / `RPC_URL`: Optional custom Soroban RPC endpoint override.
+* `CONDUIT_FACTORY_ADDRESS`: Optional override for deployed DripFactory contract address.
+* `CONDUIT_GOVERNOR_ADDRESS`: Optional override for deployed DripGovernor contract address.
+* `CONDUIT_TOKEN_ADDRESS`: Optional default token contract address or `'native'`.
+* `STREAM_ID` / `ADDRESS`: Parameters for example scripts and CLI integration.
 
 ---
 

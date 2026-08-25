@@ -12,7 +12,13 @@ All notable changes are documented here. Format based on [Keep a Changelog](http
 - `FactoryModule.streamAddress()` now caches resolved stream→contract-address lookups in-memory, since the mapping is fixed at stream creation and never changes. Eliminates redundant RPC round trips on every `StreamsModule` read/write operation (`get`, `withdraw`, `cancel`, `pause`, `resume`, `topUp`, `clawback`) and on each page of `list()`, which previously re-resolved the same address for every stream on every call.
 - `buildBatchTransactions()` (the RPC-prepared batch path) now simulates all operations in a batch concurrently instead of one at a time, cutting the wall-clock time of an N-operation batch from N sequential RPC round trips to one.
 
+### Removed
+- Removed orphaned `RoomManager` (`src/room-manager.js`) and `src/server.js` WebSocket server, along with unused `dotenv` production dependency (#442).
+- Removed unused `GraphSyncAgent` (`src/graph-sync-agent.ts`) dead code (#443).
+
 ### Documentation
+- Removed non-existent `contracts/*-abi.ts` entry from `docs/architecture.md` module map (#440).
+- Replaced orphaned `MAX_ROOM_SIZE` `.env.example` with a comprehensive SDK environment configuration template and updated `README.md` (#441).
 - Added an API reference section for `GraphQLIndexer`, which was previously exported but undocumented.
 - Added a "Wallet Adapters" API reference section documenting `KeypairWalletAdapter`.
 - Documented `ConduitClient`'s `pauseStream()`, `unpauseStream()`, and `setWallet()` convenience methods in `docs/api.md`, and fixed `setWallet()`'s JSDoc block, which had been orphaned above `pauseStream()`/`unpauseStream()` and left `setWallet()` itself undocumented.
