@@ -17,6 +17,7 @@ export interface RelayerState {
 export type RelayerStateTransition = 'connecting' | 'connected' | 'disconnected' | 'reconnecting' | 'destroyed';
 
 export interface WebSocketRelayerOptions {
+  maxPendingMessages?: number;
   maxReconnectAttempts?: number;
   reconnectDelayMs?: number;
   onStateChange?: StateChangeHandler;
@@ -36,12 +37,14 @@ export class WebSocketRelayer {
   private maxReconnectAttempts: number;
   private reconnectDelayMs: number;
   private pendingMessages: WebSocketMessage[] = [];
+  private maxPendingMessages: number;
   private stateTransition: RelayerStateTransition = 'disconnected';
 
   constructor(url: string, options?: WebSocketRelayerOptions) {
     this.url = url;
     this.maxReconnectAttempts = options?.maxReconnectAttempts ?? 5;
     this.reconnectDelayMs = options?.reconnectDelayMs ?? 1000;
+    this.maxPendingMessages = options?.maxPendingMessages ?? 1000;
     if (options?.onStateChange) {
       this.stateChangeHandlers.add(options.onStateChange);
     }
@@ -289,6 +292,13 @@ export class WebSocketRelayer {
         this.handlers.delete(type);
       }
     }
+  }
+
+  private _queueMessage(message: WebSocketMessage): void {
+    if (this.pendingMessages.length >= this.maxPendingMessages) {
+      this.pendingMessages.shift();
+    }
+    this.pendingMessages.push(message);
   }
 
   async send(message: WebSocketMessage): Promise<void> {
