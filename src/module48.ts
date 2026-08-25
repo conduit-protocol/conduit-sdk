@@ -1,5 +1,5 @@
 import type { StreamInfo } from './types/index.js';
-import { withdrawableLocal } from './utils.js';
+import { withdrawableLocal, streamProgress } from './utils.js';
 
 export interface Module48Config {
   /** Maximum number of calculated results to keep in the fast lookup cache */
@@ -112,17 +112,7 @@ export class Module48 {
     this.cacheMisses++;
     const withdrawable = withdrawableLocal(item.stream, nowSec);
 
-    let progress = 0;
-    const { startTime, endTime } = item.stream;
-    if (nowSec >= startTime) {
-      if (endTime === 0) {
-        progress = 0.5; // open-ended active
-      } else if (nowSec >= endTime) {
-        progress = 1.0;
-      } else {
-        progress = (nowSec - startTime) / (endTime - startTime);
-      }
-    }
+    const progress = streamProgress(item.stream, nowSec);
 
     const computedAt = nowSec;
 
