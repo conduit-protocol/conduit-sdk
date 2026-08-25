@@ -415,6 +415,14 @@ function validatePayload(streams: unknown): string[] {
       // Field-level validation for known address-type fields
       const obj = item as Record<string, unknown>;
 
+      // Required field checks — token, sender, recipient, amount must all be present
+      const REQUIRED_FIELDS = ['token', 'sender', 'recipient', 'amount'] as const;
+      for (const field of REQUIRED_FIELDS) {
+        if (obj[field] === undefined || obj[field] === null) {
+          errors.push(`Batch item at index ${i}: missing required field "${field}"`);
+        }
+      }
+
       // Validate token field — must be a valid Soroban contract ID (C-address)
       if (obj.token !== undefined && obj.token !== null) {
         const token = String(obj.token);
