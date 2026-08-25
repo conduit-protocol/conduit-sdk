@@ -114,6 +114,75 @@ describe('StreamsModule — keypair guard', () => {
     const sdk = new StreamsModule(makeConfig(false));
     await expect(sdk.clawback(1n)).rejects.toThrow('keypair');
   });
+
+  it('forceCancel() throws without keypair', async () => {
+    const { StreamsModule } = await import('../streams.js');
+    const sdk = new StreamsModule(makeConfig(false));
+    await expect(sdk.forceCancel(1n)).rejects.toThrow('keypair');
+  });
+
+  it('transferRecipient() throws without keypair', async () => {
+    const { StreamsModule } = await import('../streams.js');
+    const sdk = new StreamsModule(makeConfig(false));
+    await expect(sdk.transferRecipient(1n, 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5')).rejects.toThrow('keypair');
+  });
+});
+
+describe('StreamsModule — amount validation (withdraw/topUp)', () => {
+  it('withdraw() rejects an explicit zero amount client-side', async () => {
+    const { StreamsModule } = await import('../streams.js');
+    const sdk = new StreamsModule(makeConfig(true));
+    await expect(sdk.withdraw(1n, 0n)).rejects.toThrow('Invalid amount: must be greater than zero');
+  });
+
+  it('withdraw() rejects a negative amount client-side', async () => {
+    const { StreamsModule } = await import('../streams.js');
+    const sdk = new StreamsModule(makeConfig(true));
+    await expect(sdk.withdraw(1n, -5n)).rejects.toThrow('Invalid amount: must be greater than zero');
+  });
+
+  it('topUp() rejects a zero amount client-side', async () => {
+    const { StreamsModule } = await import('../streams.js');
+    const sdk = new StreamsModule(makeConfig(true));
+    await expect(sdk.topUp(1n, 0n)).rejects.toThrow('Invalid amount: must be greater than zero');
+  });
+
+  it('topUp() rejects a negative amount client-side', async () => {
+    const { StreamsModule } = await import('../streams.js');
+    const sdk = new StreamsModule(makeConfig(true));
+    await expect(sdk.topUp(1n, -1n)).rejects.toThrow('Invalid amount: must be greater than zero');
+  });
+
+  it('topUpStream() rejects a zero amount client-side', async () => {
+    const { StreamsModule } = await import('../streams.js');
+    const sdk = new StreamsModule(makeConfig(true));
+    await expect(sdk.topUpStream('1', '0')).rejects.toThrow('Invalid amount: must be greater than zero');
+  });
+
+  it('batchWithdraw() reports an invalid amount as a per-item failure', async () => {
+    const { StreamsModule } = await import('../streams.js');
+    const sdk = new StreamsModule(makeConfig(true));
+    const result = await sdk.batchWithdraw([{ streamId: 1n, amount: 0n }]);
+    expect(result).toEqual([{
+      streamId: 1n,
+      success: false,
+      error: 'Invalid amount: must be greater than zero',
+    }]);
+  });
+});
+
+describe('StreamsModule — transferRecipient() validation', () => {
+  it('rejects an empty recipient address client-side', async () => {
+    const { StreamsModule } = await import('../streams.js');
+    const sdk = new StreamsModule(makeConfig(true));
+    await expect(sdk.transferRecipient(1n, '')).rejects.toThrow('Invalid recipient address: must be a non-empty string');
+  });
+
+  it('rejects a whitespace-only recipient address client-side', async () => {
+    const { StreamsModule } = await import('../streams.js');
+    const sdk = new StreamsModule(makeConfig(true));
+    await expect(sdk.transferRecipient(1n, '   ')).rejects.toThrow('Invalid recipient address: must be a non-empty string');
+  });
 });
 
 describe('StreamsModule — create() param validation', () => {
@@ -251,6 +320,42 @@ describe('StreamsModule — list()', () => {
     expect(result.hasNextPage).toBe(false);
     expect(result.totalCount).toBe(21n);
     expect(mockStreamCount).not.toHaveBeenCalled();
+  });
+
+  it('queries both sender and recipient filters when both are given', async () => {
+    mockStreamsBySender.mockResolvedValue([]);
+    mockStreamsByRecipient.mockResolvedValue([]);
+    const { StreamsModule } = await import('../streams.js');
+    const sdk = new StreamsModule(makeConfig(false));
+    await sdk.list({
+      sender:    'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN',
+      recipient: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
+      offset: 5,
+      limit: 10,
+    });
+    expect(mockStreamsBySender).toHaveBeenCalledWith(
+      'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN', 5, 10,
+    );
+    expect(mockStreamsByRecipient).toHaveBeenCalledWith(
+      'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5', 5, 10,
+    );
+  });
+
+  it('returns the de-duplicated union when both sender and recipient are given', async () => {
+    mockStreamsBySender.mockResolvedValue([1n, 2n]);
+    mockStreamsByRecipient.mockResolvedValue([2n, 3n]);
+    mockStreamAddress.mockResolvedValue('CCWAMYJME27OHTPKVSV252YRPXEO4BSKBHVLQ7ML3OWYNMB5RQEVHSM');
+    mockSimulate.mockResolvedValue({ result: { retval: xdr.ScVal.scvMap([]) } });
+    const { StreamsModule } = await import('../streams.js');
+    const sdk = new StreamsModule(makeConfig(false));
+    const result = await sdk.list({
+      sender:    'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN',
+      recipient: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
+      offset: 0,
+      limit: 20,
+    });
+    // Stream 2 appears in both pages and must not be duplicated.
+    expect(result.streams.map(s => s.id)).toEqual([1n, 2n, 3n]);
   });
 });
 

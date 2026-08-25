@@ -68,7 +68,7 @@ Current withdrawable balance in stroops. Read-only, no transaction.
 
 **Returns:** Transaction hash  
 **Requires:** `keypair` set (recipient)  
-**Throws:** `ConduitError` with `contract: 'stream'` — `StreamErrorCode.NothingToWithdraw`, `.NotAuthorized`, `.StreamCancelled`, `.InvalidAmount`
+**Throws:** `Error` (client-side) if an explicit `amount` is `<= 0n` — validated before any RPC round-trip, mirroring the contract's `InvalidAmount` guard; `ConduitError` with `contract: 'stream'` — `StreamErrorCode.NothingToWithdraw`, `.NotAuthorized`, `.StreamCancelled`, `.InvalidAmount`
 
 ---
 
@@ -104,7 +104,35 @@ Resumes a paused stream. Paused duration is excluded from streaming time.
 Adds tokens to the stream balance. Extends effective stream duration.
 
 **Requires:** `keypair` set (sender)  
-**Throws:** `ConduitError` with `contract: 'stream'` — `StreamErrorCode.StreamCancelled`, `.InvalidAmount`
+**Throws:** `Error` (client-side) if `amount` is `<= 0n` — validated before any RPC round-trip; `ConduitError` with `contract: 'stream'` — `StreamErrorCode.StreamCancelled`, `.InvalidAmount`
+
+---
+
+### `forceCancel(streamId) → Promise<string>`
+
+Force-cancels a **paused** stream as the recipient, once the 30-day pause threshold has
+elapsed. Settles atomically like `cancel()`: the recipient's earned-but-unwithdrawn tokens are
+paid out and the unstreamed remainder is refunded to the sender. Prevents a sender from
+indefinitely pausing a stream to hold unstreamed tokens hostage.
+
+**Requires:** `keypair` set (recipient)  
+**Throws:** `ConduitError` with `contract: 'stream'` — `StreamErrorCode.NotPaused`, `.PauseThresholdNotMet`, `.StreamCancelled`, `.NotAuthorized`
+
+---
+
+### `transferRecipient(streamId, newRecipient) → Promise<string>`
+
+Transfers the recipient role to a new address (current recipient only). The new recipient
+inherits all rights, including the withdrawable balance accrued up to the moment of transfer.
+
+| Param | Type | Notes |
+|-------|------|-------|
+| `streamId` | `bigint \| string` | |
+| `newRecipient` | `string` | Stellar G-address of the new recipient |
+
+**Returns:** Transaction hash  
+**Requires:** `keypair` set (recipient)  
+**Throws:** `Error` (client-side) if `newRecipient` is empty; `ConduitError` with `contract: 'stream'` — `StreamErrorCode.NotAuthorized`, `.StreamCancelled`
 
 ---
 
@@ -126,6 +154,10 @@ Reclaims unstreamed tokens. Only works if `clawbackEnabled` was `true` at creati
 | `recipient` | `string?` | Filter by recipient address |
 | `offset` | `number?` | Default `0` |
 | `limit` | `number?` | Default `20`, max `100` |
+
+When **both** `sender` and `recipient` are given, the result is the **union** of the two
+filters (streams where the address is either sender or recipient), de-duplicated — neither
+filter is silently dropped.
 
 ---
 

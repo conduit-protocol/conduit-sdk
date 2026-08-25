@@ -332,9 +332,37 @@ const txHash = await client.streams.clawback(streamId: bigint | string);
 
 ---
 
+#### `forceCancel(streamId)`
+
+Force-cancel a paused stream as the recipient after the 30-day pause threshold has elapsed.
+Settles atomically like `cancel()`; prevents a sender from indefinitely pausing a stream to
+hold unstreamed tokens hostage.
+
+```typescript
+const txHash = await client.streams.forceCancel(streamId: bigint | string);
+```
+
+---
+
+#### `transferRecipient(streamId, newRecipient)`
+
+Transfer the recipient role to a new address (current recipient only). The new recipient
+inherits all rights, including the withdrawable balance accrued so far.
+
+```typescript
+const txHash = await client.streams.transferRecipient(
+  streamId:     bigint | string,
+  newRecipient: string,
+);
+```
+
+---
+
 #### `list(params)`
 
-Query streams by sender or recipient.
+Query streams by sender and/or recipient. When **both** `sender` and `recipient` are given,
+the result is the de-duplicated **union** of the two filters (streams where the address is
+either sender or recipient).
 
 ```typescript
 const streams = await client.streams.list({

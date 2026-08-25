@@ -330,6 +330,16 @@ describe('StreamsModule — withdraw/cancel/pause/resume/topUp success paths', (
     expect(hash).toBe('deadbeef');
   });
 
+  it('withdraw() without an explicit amount defaults to the withdrawable balance', async () => {
+    // The client-side amount guard must not reject the omitted-amount case;
+    // the withdrawable() read (an i128 retval) supplies the quantity.
+    mockSimulate.mockResolvedValue(simSuccess(i128Scv(250n)));
+    const { StreamsModule } = await import('../streams.js');
+    const sdk = new StreamsModule(makeConfig());
+    const hash = await runThroughFirstPoll(() => sdk.withdraw(1n));
+    expect(hash).toBe('deadbeef');
+  });
+
   it('cancel() returns the confirmed transaction hash', async () => {
     const { StreamsModule } = await import('../streams.js');
     const sdk = new StreamsModule(makeConfig());
@@ -377,5 +387,70 @@ describe('StreamsModule — withdraw/cancel/pause/resume/topUp success paths', (
     const { StreamsModule } = await import('../streams.js');
     const sdk = new StreamsModule(makeConfig());
     await expect(runThroughFirstPoll(() => sdk.pause(1n))).rejects.toThrow(/failed/);
+  });
+});
+
+describe('StreamsModule.forceCancel() — success path', () => {
+  beforeEach(() => {
+    mockStreamAddress.mockResolvedValue(STREAM_ADDR);
+    mockSimulate.mockResolvedValue(simSuccess(xdr.ScVal.scvVoid()));
+    mockGetTransaction.mockResolvedValue(txSuccess());
+  });
+
+  it('returns the confirmed transaction hash', async () => {
+    const { StreamsModule } = await import('../streams.js');
+    const sdk = new StreamsModule(makeConfig());
+    const hash = await runThroughFirstPoll(() => sdk.forceCancel(1n));
+    expect(hash).toBe('deadbeef');
+  });
+
+  it('maps StreamErrorCode.PauseThresholdNotMet (contract #13) on simulation failure', async () => {
+    mockSimulate.mockResolvedValue(simError('HostError: Error(Contract, #13)'));
+    const { StreamsModule } = await import('../streams.js');
+    const sdk = new StreamsModule(makeConfig());
+
+    const err = await sdk.forceCancel(1n).catch(e => e);
+    expect(err).toBeInstanceOf(ConduitError);
+    expect((err as ConduitError).contract).toBe('stream');
+    expect((err as ConduitError).code).toBe(13);
+  });
+
+  it('maps StreamErrorCode.NotPaused (contract #10) on simulation failure', async () => {
+    mockSimulate.mockResolvedValue(simError('HostError: Error(Contract, #10)'));
+    const { StreamsModule } = await import('../streams.js');
+    const sdk = new StreamsModule(makeConfig());
+
+    const err = await sdk.forceCancel(1n).catch(e => e);
+    expect(err).toBeInstanceOf(ConduitError);
+    expect((err as ConduitError).contract).toBe('stream');
+    expect((err as ConduitError).code).toBe(10);
+  });
+});
+
+describe('StreamsModule.transferRecipient() — success path', () => {
+  beforeEach(() => {
+    mockStreamAddress.mockResolvedValue(STREAM_ADDR);
+    mockSimulate.mockResolvedValue(simSuccess(xdr.ScVal.scvVoid()));
+    mockGetTransaction.mockResolvedValue(txSuccess());
+  });
+
+  it('returns the confirmed transaction hash', async () => {
+    const { StreamsModule } = await import('../streams.js');
+    const sdk = new StreamsModule(makeConfig());
+    const newRecipient = Keypair.random().publicKey();
+    const hash = await runThroughFirstPoll(() => sdk.transferRecipient(1n, newRecipient));
+    expect(hash).toBe('deadbeef');
+  });
+
+  it('invokes transfer_recipient with the new recipient address', async () => {
+    const { buildContractCallTx } = await import('../soroban.js');
+    const { StreamsModule } = await import('../streams.js');
+    const sdk = new StreamsModule(makeConfig());
+    const newRecipient = Keypair.random().publicKey();
+    await runThroughFirstPoll(() => sdk.transferRecipient(1n, newRecipient));
+    expect(buildContractCallTx).toHaveBeenCalledWith(
+      expect.any(String), expect.any(String), expect.any(String),
+      STREAM_ADDR, 'transfer_recipient', [expect.anything()],
+    );
   });
 });
