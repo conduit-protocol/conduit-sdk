@@ -89,7 +89,10 @@ function normalizePollingOptions(options: ConfirmationPollingOptions = {}): Requ
 
 /**
  * Creates a SorobanRpc.Server instance wrapped with an exponential backoff retry mechanism.
- * Retries on HTTP 429 and 503 rate limits.
+ * Retries on HTTP 429 rate limits (throttled — back off and retry the same
+ * endpoint), but fails fast on HTTP 503, which is surfaced as a
+ * {@link RpcServiceUnavailableError} so callers can fail over to a
+ * different RPC URL instead of retrying a node that is down. See #456.
  */
 export function createRpcServer(rpcUrl: string): SorobanRpc.Server {
   const cached = _proxiedServerCache.get(rpcUrl);
@@ -119,12 +122,15 @@ export function createRpcServer(rpcUrl: string): SorobanRpc.Server {
             try {
               return await (origMethod as (...a: unknown[]) => Promise<unknown>).apply(target, args);
             } catch (err) {
-              const rateLimitErr = RateLimitError.fromRpcError(err);
+              const classified = RateLimitError.fromRpcError(err);
 
-              if (!rateLimitErr || attempt === MAX_RETRIES) {
-                throw rateLimitErr ?? err;
+              // Only a genuine RateLimitError (HTTP 429 / JSON-RPC 429) is
+              // retried with backoff. A 503 is classified as
+              // RpcServiceUnavailableError and thrown immediately.
+              if (!(classified instanceof RateLimitError) || attempt === MAX_RETRIES) {
+                throw classified ?? err;
               }
-              const waitTime = rateLimitErr.retryAfterMs ?? delay;
+              const waitTime = classified.retryAfterMs ?? delay;
               await sleep(waitTime);
               delay *= 2; // Backoff factor: 2x
             }
@@ -347,24 +353,70 @@ function sleep(ms: number): Promise<void> {
 // ── Network error helpers ─────────────────────────────────────────────────────
 
 /**
+ * Error codes that identify a transport-level failure: connection
+ * refused/reset, DNS resolution failure, timeout, unreachable host. These
+ * come from Node's net/dns layer (`ECONNREFUSED`, `ENOTFOUND`, ...),
+ * undici (`UND_ERR_*`), axios (`ERR_NETWORK`), or the browser fetch stack
+ * (`ERR_CONN_*`).
+ */
+const NETWORK_ERROR_CODE_PATTERN =
+  /^(?:ECONNREFUSED|ECONNRESET|ENOTFOUND|ETIMEDOUT|ENETUNREACH|EHOSTUNREACH|EAI_AGAIN|EPIPE|ERR_NETWORK|ERR_CONN|ERR_SOCKET|UND_ERR|ERR_HTTP2_CONNECT_ERROR|ERR_TLS)/i;
+
+/**
+ * Canonical network-layer failure messages produced by the fetch/axios HTTP
+ * stacks. These are matched exactly (never substring-matched) so an unrelated
+ * programming TypeError such as `Cannot read properties of undefined (reading
+ * 'connect')` is not misclassified as a network outage.
+ */
+const NETWORK_TYPE_ERROR_MESSAGES = new Set([
+  'fetch failed',    // Node.js undici
+  'Failed to fetch', // Chromium fetch
+  'Network Error',   // axios (browser)
+  'Load failed',     // Safari fetch
+]);
+
+/**
+ * Walks an error and its nested `cause` chain looking for a transport-level
+ * error code. Node's `fetch` rejects with `TypeError: fetch failed` whose
+ * `.cause` carries the real errno code (e.g. `ECONNREFUSED`), so checking the
+ * nested cause is more reliable than substring-matching the whole error text.
+ */
+function hasNetworkErrorCode(cause: unknown): boolean {
+  let current: unknown = cause;
+  for (let depth = 0; depth < 5 && current !== null && typeof current === 'object'; depth++) {
+    if ('code' in current) {
+      const code = String((current as { code: unknown }).code);
+      if (NETWORK_ERROR_CODE_PATTERN.test(code)) return true;
+    }
+    current = (current as { cause?: unknown }).cause;
+  }
+  return false;
+}
+
+/**
  * Catches an RPC-level error (e.g. `TypeError: fetch failed`) and re-throws it
  * as a `StreamFiNetworkError` so callers can distinguish network outages from
  * contract-logic failures.
+ *
+ * Only errors that are *provably* transport failures are reclassified: the
+ * canonical fetch/axios network messages, or an error (or its nested `cause`)
+ * carrying a network errno code. A `TypeError` from a programming mistake in
+ * the simulate/assemble/sign pipeline is re-thrown as-is so it isn't masked
+ * as a network outage. See #457.
  */
 export function catchNetworkError<T>(label: string, promise: Promise<T>): Promise<T> {
   return promise.catch((cause: unknown) => {
     if (cause instanceof StreamFiNetworkError || cause instanceof InsufficientBalanceError) {
       throw cause;
     }
-    if (cause instanceof TypeError && /fetch|network|connect|refused|dns|econnrefused|enotfound|etimedout/i.test(String(cause))) {
-      throw new StreamFiNetworkError(`Network error during ${label}: ${(cause as Error).message}`, cause);
-    }
-    if (cause && typeof cause === 'object' && 'code' in cause) {
-      const code = String((cause as { code: unknown }).code);
-      if (/ECONNREFUSED|ENOTFOUND|ETIMEDOUT|ECONNRESET|ERR_CONN/i.test(code)) {
-        const message = cause instanceof Error ? cause.message : String(cause);
-        throw new StreamFiNetworkError(`Network error during ${label}: ${message}`, cause);
+    if (cause instanceof TypeError) {
+      const message = (cause as Error).message ?? String(cause);
+      if (NETWORK_TYPE_ERROR_MESSAGES.has(message) || hasNetworkErrorCode(cause)) {
+        throw new StreamFiNetworkError(`Network error during ${label}: ${(cause as Error).message}`, cause);
       }
+    } else if (hasNetworkErrorCode(cause)) {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      throw new StreamFiNetworkError(`Network error during ${label}: ${message}`, cause);
     }
     // Re-throw non-network errors as-is
     throw cause;

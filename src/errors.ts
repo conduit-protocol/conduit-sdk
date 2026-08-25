@@ -287,6 +287,11 @@ function fromStroopsInternal(stroops: bigint, decimals: number): string {
  * an equivalent JSON-RPC rate-limit error code, instead of the previous
  * generic/unclassified error that made rate limiting indistinguishable
  * from any other network failure. See #120.
+ *
+ * A 429 means the caller is being throttled: back off and retry against
+ * the *same* endpoint. HTTP 503 (Service Unavailable) is a different
+ * failure mode and is reported as {@link RpcServiceUnavailableError} so
+ * consumers can distinguish "throttled" from "endpoint down".
  */
 export class RateLimitError extends Error {
   /** Milliseconds to wait before retrying, parsed from a Retry-After header if present. */
@@ -319,27 +324,41 @@ export class RateLimitError extends Error {
   }
 
   /**
-   * Detects a rate-limit condition from a raw error thrown by the RPC
-   * client and converts it into a typed RateLimitError. Handles two shapes:
+   * Detects a rate-limit or service-unavailable condition from a raw error
+   * thrown by the RPC client and converts it into a typed error. Handles
+   * two shapes:
    *
-   * 1. An axios-style error (network-level 429), shaped like
-   *    `{ response: { status: 429, headers } }`.
+   * 1. An axios-style error (network-level HTTP status), shaped like
+   *    `{ response: { status, headers } }`.
    * 2. A raw JSON-RPC error object (rpc/jsonrpc.js does `throw response.data.error`
    *    directly, so it is a plain object, not an Error instance), shaped
    *    like `{ code: -32029 }`.
    *
-   * Returns null if `raw` is not a rate-limit error, so callers can fall
-   * back to their existing error handling.
+   * HTTP 429 and the equivalent JSON-RPC codes map to a {@link RateLimitError}
+   * (throttled — back off and retry the same endpoint), while HTTP 503 maps
+   * to a {@link RpcServiceUnavailableError} (endpoint down — consider failing
+   * over to a different RPC URL). See #456.
+   *
+   * Returns null if `raw` is neither a rate-limit nor a service-unavailable
+   * error, so callers can fall back to their existing error handling.
    */
-  static fromRpcError(raw: unknown): RateLimitError | null {
+  static fromRpcError(raw: unknown): RateLimitError | RpcServiceUnavailableError | null {
     if (!raw || typeof raw !== 'object') return null;
 
     const response = (raw as { response?: { status?: number; headers?: Record<string, unknown> } }).response;
-    if (response?.status === 429 || response?.status === 503) {
+    if (response?.status === 429) {
       const retryAfterHeader = response.headers?.['retry-after'];
       const retryAfterMs = RateLimitError.parseRetryAfterMs(retryAfterHeader);
       return new RateLimitError(
-        `RPC node rate limit or service unavailable (${response.status}). Back off and retry.`,
+        `RPC node rate limit exceeded (429). Back off and retry against the same endpoint.`,
+        retryAfterMs,
+      );
+    }
+    if (response?.status === 503) {
+      const retryAfterHeader = response.headers?.['retry-after'];
+      const retryAfterMs = RateLimitError.parseRetryAfterMs(retryAfterHeader);
+      return new RpcServiceUnavailableError(
+        `RPC node service unavailable (503). The endpoint may be down; consider failing over to a different RPC URL.`,
         retryAfterMs,
       );
     }
@@ -353,5 +372,28 @@ export class RateLimitError extends Error {
     }
 
     return null;
+  }
+}
+
+/**
+ * Thrown when an RPC node responds with HTTP 503 (Service Unavailable).
+ *
+ * Distinct from {@link RateLimitError}: a 429 means the caller is being
+ * throttled and should back off and retry the *same* endpoint, while a 503
+ * usually means the node/endpoint itself is down — the appropriate
+ * remediation is to fail over to a different RPC URL rather than retrying
+ * the same one. Consumers catching `RateLimitError` for backoff-and-retry
+ * therefore never loop forever against a genuinely unavailable service.
+ * See #456.
+ */
+export class RpcServiceUnavailableError extends Error {
+  /** Milliseconds to wait before retrying, parsed from a Retry-After header if present. */
+  readonly retryAfterMs: number | undefined;
+
+  constructor(message: string, retryAfterMs?: number) {
+    super(message);
+    this.name = 'RpcServiceUnavailableError';
+    this.retryAfterMs = retryAfterMs;
+    Object.setPrototypeOf(this, new.target.prototype);
   }
 }

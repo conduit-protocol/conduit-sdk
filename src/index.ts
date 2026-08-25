@@ -27,6 +27,7 @@ export {
   StreamFiNetworkError,
   InsufficientBalanceError,
   RateLimitError,
+  RpcServiceUnavailableError,
   SUPPORTED_NETWORKS,
   UNKNOWN_CONTRACT_ERROR_CODE,
 } from './errors.js';

@@ -88,7 +88,7 @@ describe('StreamBuilder', () => {
     });
   });
 
-  it('includes ratePerSecond as a number when set with a number', () => {
+  it('serialises a numeric ratePerSecond to a string to match the declared type', () => {
     const stream = new StreamBuilder()
       .token('CAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQC526')
       .sender('GAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQDZ7H')
@@ -97,7 +97,12 @@ describe('StreamBuilder', () => {
       .ratePerSecond(500)
       .build();
 
-    expect(stream.ratePerSecond).toBe(500);
+    // build()'s return type promises `ratePerSecond?: string` — the runtime
+    // value must match the declared type (see #459).
+    expect(stream.ratePerSecond).toBe('500');
+    expect(typeof stream.ratePerSecond).toBe('string');
+    const json = JSON.parse(JSON.stringify(stream));
+    expect(json.ratePerSecond).toBe('500');
   });
 
   it('serialises bigint ratePerSecond to string', () => {

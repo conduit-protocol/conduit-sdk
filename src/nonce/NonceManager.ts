@@ -42,14 +42,17 @@ export class NonceManager {
   }
 
   private toSafeBigInt(value: bigint | number | string): bigint {
-    if (typeof value === 'string') {
-      try {
-        return BigInt(value);
-      } catch {
-        return 0n;
-      }
+    if (typeof value === 'string' && value.trim() === '') {
+      // BigInt('') would coerce to 0n, silently masking a caller bug.
+      throw new Error('NonceManager: nonce value cannot be an empty string');
     }
-    return BigInt(value);
+    try {
+      return BigInt(value);
+    } catch {
+      throw new Error(
+        `NonceManager: invalid nonce value "${String(value)}" — expected a non-negative integer (bigint, number, or numeric string)`,
+      );
+    }
   }
 
   private nonceKey(nonce: bigint): string {

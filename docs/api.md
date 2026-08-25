@@ -357,7 +357,9 @@ clearServerCache();
 > **Internal usage:** All SDK functions that interact with the Soroban RPC (`buildContractCallTx`,
 > `simulateReadOnly`, `invokeContract`, `StreamsModule`, `subscribeToStream`, etc.) build their
 > server through an internal wrapper that calls `getServer` for the cached instance and adds
-> automatic retry-with-backoff on rate-limit errors (HTTP 429/503). Calling `getServer` yourself
+> automatic retry-with-backoff on rate-limit errors (HTTP 429). HTTP 503 (Service Unavailable) is
+> **not** retried — it is surfaced as a `RpcServiceUnavailableError` so callers can fail over to a
+> different RPC URL instead of retrying a node that is down. Calling `getServer` yourself
 > gives you the cached-but-unwrapped instance — no automatic retry — so you do not need to call
 > it yourself unless you are using the low-level Soroban helpers directly and want to manage
 > retries on your own.
