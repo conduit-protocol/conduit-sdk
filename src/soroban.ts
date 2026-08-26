@@ -398,17 +398,27 @@ export async function queryXlmBalance(
 }
 
 /**
- * Estimate the minimum resource fee required for a transaction simulation.
- * If the simulation already failed with WasmVm, we return a lower bound based
- * on typical Soroban contract call costs (this is a best-effort estimate).
+ * Realistic estimate of a Soroban contract-call resource fee in stroops
+ * (0.1 XLM). Used when a simulation carries no fee fields — e.g. an
+ * error-response simulation (WasmVm/InvalidAction insufficient balance)
+ * reports neither `minResourceFee` nor `fee`. A typical resource fee is a
+ * small fraction of one XLM, so this is a fair estimate; the previous
+ * 500 XLM fallback overstated the required balance by ~500 XLM (see #430).
  */
-export function estimateRequiredFee(simResult: unknown, fallbackStroops = 5_000_000_000n): bigint {
+export const DEFAULT_RESOURCE_FEE_ESTIMATE = 1_000_000n;
+
+/**
+ * Estimate the minimum resource fee required for a transaction simulation.
+ *
+ * A successful simulation reports the fee in `minResourceFee` (preferred)
+ * or `fee`. An error-response simulation — the shape passed in from the
+ * insufficient-balance path in `StreamsModule.create()` — carries neither
+ * field, so we fall back to {@link DEFAULT_RESOURCE_FEE_ESTIMATE} rather
+ * than an inflated upper bound.
+ */
+export function estimateRequiredFee(simResult: unknown, fallbackStroops = DEFAULT_RESOURCE_FEE_ESTIMATE): bigint {
   if (simResult && typeof simResult === 'object') {
     const r = simResult as { minResourceFee?: unknown; fee?: unknown };
-    // Try to extract minResourceFee from the simulation result. Note: an
-    // error-response simulation (the expected caller here, since this is
-    // only reached from within an isSimulationError() branch) carries
-    // neither field, so this intentionally falls through to the fallback.
     if (r.minResourceFee !== undefined) {
       const fee = BigInt(r.minResourceFee as string | number | bigint);
       if (fee > 0n) return fee;
@@ -418,5 +428,5 @@ export function estimateRequiredFee(simResult: unknown, fallbackStroops = 5_000_
       if (fee > 0n) return fee;
     }
   }
-  return fallbackStroops; // ~500 XLM default upper-bound estimate
+  return fallbackStroops;
 }

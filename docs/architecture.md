@@ -65,16 +65,15 @@ reading raw Soroban errors instead of going through this SDK.
 
 ---
 
-## Events — read the caveat before relying on payload fields
+## Events
 
-`events.ts` polls `SorobanRpc.Server.getEvents()` and dispatches by topic name. As of this
-version, only the `amount` field (for `onWithdraw`/`onClawback`) is actually decoded from the
-event's XDR value — every other numeric field on the other handlers (`onCancel`, `onPause`,
-`onResume`, `onTopUp`) is a hardcoded `0`/`0n` placeholder, because the underlying contract
-events publish multi-value tuples and the parser only handles the single-value case so far. See
-[`docs/api.md`](./api.md#subscribestreamid-handlers--subscription) for the full list of affected
-fields. Treat these events as a "something changed, go refetch" signal rather than a source of
-truth, until tuple decoding is implemented.
+`events.ts` polls `SorobanRpc.Server.getEvents()` and dispatches by topic name. Every event
+payload is fully decoded from its XDR value: multi-field events are parsed via
+`tupleFields()`/`i128Field()`/`u64Field()` into their typed fields (`onWithdraw` →
+`amount`/`totalWithdrawn`/`remaining`, `onCancel` → `refundAmount`/`withdrawnSoFar`,
+`onPause` → `pausedAt`/`withdrawable`, `onTopUp` → `amount`/`newBalance`), and single-field
+events are parsed from their bare scalar (`onResume` → `resumedAt`, `onClawback` → `amount`).
+See [`docs/api.md`](./api.md#subscribestreamid-handlers--subscription) for the full field list.
 
 ---
 

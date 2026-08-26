@@ -118,7 +118,7 @@ Reclaims unstreamed tokens. Only works if `clawbackEnabled` was `true` at creati
 
 ---
 
-### `list(params) → Promise<StreamInfo[]>`
+### `list(params) → Promise<PaginatedStreams>`
 
 | Param | Type | Notes |
 |-------|------|-------|
@@ -126,6 +126,22 @@ Reclaims unstreamed tokens. Only works if `clawbackEnabled` was `true` at creati
 | `recipient` | `string?` | Filter by recipient address |
 | `offset` | `number?` | Default `0` |
 | `limit` | `number?` | Default `20`, max `100` |
+| `cursor` | `string?` | Opaque base64-encoded cursor from a previous page's `nextCursor`; takes precedence over `offset` when both are provided. Throws `Invalid cursor` on malformed input |
+
+**Returns:** a page of results plus pagination metadata:
+
+```typescript
+interface PaginatedStreams {
+  streams:     StreamInfo[];  // stream info for this page
+  hasNextPage: boolean;       // whether more results exist after this page
+  totalCount:  bigint;        // number of filtered stream IDs seen through the end of this page
+  offset:      number;        // the offset used for this page
+  limit:       number;        // the limit used for this page
+  nextCursor?: string;        // opaque cursor for the next page; present only when hasNextPage is true
+}
+```
+
+Pass a page's `nextCursor` back as `cursor` to fetch the next page (see [`examples/list-streams.ts`](../examples/list-streams.ts)).
 
 ---
 
@@ -147,13 +163,13 @@ const sub = client.streams.subscribe(streamId, {
 sub.unsubscribe();
 ```
 
-> **Only `amount` (on `onWithdraw`/`onClawback`) is real.** Every other numeric/timestamp field —
-> `totalWithdrawn`, `remaining`, `refundAmount`, `withdrawnSoFar`, `pausedAt`, `withdrawable`,
-> `resumedAt`, `newBalance` — is a hardcoded `0` / `0n` placeholder in `src/events.ts`
-> (`dispatchEvent`), marked `// TODO: parse tuple data`. The contracts emit these as multi-value
-> tuples (e.g. `stream_withdrawn` → `{ amount, total_withdrawn, remaining }`), and the parser
-> doesn't decode tuple `ScVal`s yet — only the single-value case. Don't rely on these fields
-> until that's implemented; re-fetch via `client.streams.get(streamId)` instead.
+> **All event payload fields are decoded.** `src/events.ts`'s `dispatchEvent()` parses every
+> multi-field event from its tuple `ScVal`s: `onWithdraw` → `{ recipient, amount,
+> totalWithdrawn, remaining }`, `onCancel` → `{ sender, refundAmount, withdrawnSoFar }`,
+> `onPause` → `{ sender, pausedAt, withdrawable }`, `onTopUp` → `{ sender, amount, newBalance }`.
+> Single-field events are decoded from their bare scalar: `onResume` → `{ sender, resumedAt }`,
+> `onClawback` → `{ sender, amount }`. These fields are real values from the chain — no
+> placeholder `0`/`0n` values remain.
 
 ---
 
@@ -502,11 +518,11 @@ const stream = new StreamBuilder()
 
 ### `ConduitBatcher`
 
-A utility class to bundle multiple stream operations with mandatory client-side validation.
+A utility class to bundle multiple stream operations with mandatory client-side validation. `execute`/`executeAsync` are **instance methods** — instantiate with `new ConduitBatcher()` first (see [`examples/fluent-builder.ts`](../examples/fluent-builder.ts)).
 
 #### Methods
 
-* `static execute(streams: Record<string, unknown>[]): BatchResult` - Validates and bundles the list of stream configurations into a single transaction. Returns `{ success: false, errors: [...] }` if validation fails instead of throwing.
+* `execute(streams: Record<string, unknown>[], options?: BatchExecuteOptions): BatchResult` - Validates and bundles the list of stream configurations into a single transaction. Returns `{ success: false, errors: [...] }` if validation fails instead of throwing.
 
 **Validation Rules:**
 - Payload must be a non-null, non-empty array
@@ -516,16 +532,16 @@ A utility class to bundle multiple stream operations with mandatory client-side 
 ```typescript
 import { ConduitBatcher } from '@conduit-protocol/sdk';
 
-const result = ConduitBatcher.execute([stream1, stream2]);
+const result = new ConduitBatcher().execute([stream1, stream2]);
 if (!result.success) {
   console.error('Validation errors:', result.errors);
   return;
 }
 ```
 
-* `static executeAsync(operations: BatchOperation[], signal?: AbortSignal): Promise<BatchResult>` - Asynchronously execute a batch with abort signal support.
+* `executeAsync(operations: BatchOperation[], signalOrOptions?: AbortSignal | BatchExecuteAsyncOptions): Promise<BatchResult>` - Asynchronously execute a batch with abort signal / options support.
 
-**Throws:** `ConduitError` if batcher is destroyed.
+**Throws:** `Error` if batcher is destroyed.
 
 ---
 
