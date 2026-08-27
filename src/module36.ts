@@ -1,5 +1,6 @@
 import type { StreamInfo } from './types/index.js';
 import { streamProgress, withdrawableLocal } from './utils.js';
+import { LruMemoCache } from './lru-memo-cache.js';
 
 export interface Module36Config {
   /** Maximum number of snapshot diffs retained in the LRU cache */
@@ -57,19 +58,14 @@ function statusKey(stream: StreamInfo): string {
  * fixed percentage.
  */
 export class Module36 {
-  private readonly cacheSize: number;
   private readonly enableOptimization: boolean;
 
-  private cache = new Map<string, StreamDiff>();
+  private readonly cache: LruMemoCache<string, StreamDiff>;
   private totalDiffs = 0;
-  private cacheHits = 0;
-  private cacheMisses = 0;
   private totalExecutionTimeMs = 0;
-  private hitExecutionTimeMs = 0;
-  private missExecutionTimeMs = 0;
 
   constructor(config: Module36Config = {}) {
-    this.cacheSize = config.cacheSize ?? 1000;
+    this.cache = new LruMemoCache(config.cacheSize ?? 1000);
     this.enableOptimization = config.enableOptimization ?? true;
   }
 
@@ -93,18 +89,13 @@ export class Module36 {
       const cached = this.cache.get(cacheKey);
       if (cached) {
         const elapsed = performance.now() - start;
-        this.cacheHits++;
+        this.cache.recordHit(elapsed);
         this.totalDiffs++;
         this.totalExecutionTimeMs += elapsed;
-        this.hitExecutionTimeMs += elapsed;
-        // Refresh LRU order
-        this.cache.delete(cacheKey);
-        this.cache.set(cacheKey, cached);
         return { ...cached, isCached: true };
       }
     }
 
-    this.cacheMisses++;
     const previousWithdrawable = withdrawableLocal(previous.stream, previous.observedAt);
     const currentWithdrawable = withdrawableLocal(current.stream, current.observedAt);
     const previousProgress = normalizeProgress(streamProgress(previous.stream, previous.observedAt));
@@ -124,17 +115,13 @@ export class Module36 {
     };
 
     if (this.enableOptimization) {
-      if (this.cache.size >= this.cacheSize) {
-        const oldest = this.cache.keys().next().value;
-        if (oldest !== undefined) this.cache.delete(oldest);
-      }
       this.cache.set(cacheKey, result);
     }
 
     const elapsed = performance.now() - start;
+    this.cache.recordMiss(elapsed);
     this.totalDiffs++;
     this.totalExecutionTimeMs += elapsed;
-    this.missExecutionTimeMs += elapsed;
     return result;
   }
 
@@ -163,29 +150,19 @@ export class Module36 {
 
   public clearCache(): void {
     this.cache.clear();
-    this.cacheHits = 0;
-    this.cacheMisses = 0;
     this.totalDiffs = 0;
     this.totalExecutionTimeMs = 0;
-    this.hitExecutionTimeMs = 0;
-    this.missExecutionTimeMs = 0;
   }
 
   public getPerformanceMetrics(): Module36Metrics {
-    const avgHitMs = this.cacheHits > 0 ? this.hitExecutionTimeMs / this.cacheHits : null;
-    const avgMissMs = this.cacheMisses > 0 ? this.missExecutionTimeMs / this.cacheMisses : null;
-    const measuredSpeedupPercent =
-      avgHitMs !== null && avgMissMs !== null && avgMissMs > 0
-        ? ((avgMissMs - avgHitMs) / avgMissMs) * 100
-        : null;
+    const { cacheHits, cacheMisses, measuredSpeedupPercent } = this.cache.metrics();
 
     return {
       totalDiffs: this.totalDiffs,
-      cacheHits: this.cacheHits,
-      cacheMisses: this.cacheMisses,
+      cacheHits,
+      cacheMisses,
       measuredSpeedupPercent: this.enableOptimization ? measuredSpeedupPercent : null,
-      averageExecutionTimeMs:
-        this.totalDiffs > 0 ? this.totalExecutionTimeMs / this.totalDiffs : 0,
+      averageExecutionTimeMs: this.totalDiffs > 0 ? this.totalExecutionTimeMs / this.totalDiffs : 0,
     };
   }
 }

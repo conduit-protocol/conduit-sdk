@@ -1,5 +1,6 @@
 import type { StreamInfo } from './types/index.js';
 import { withdrawableLocal, streamProgress } from './utils.js';
+import { LruMemoCache } from './lru-memo-cache.js';
 
 export interface Module48Config {
   /** Maximum number of calculated results to keep in the fast lookup cache */
@@ -37,6 +38,12 @@ export interface Module48Metrics {
   averageExecutionTimeMs: number;
 }
 
+interface CachedResult {
+  withdrawable: bigint;
+  progress: number;
+  computedAt: number;
+}
+
 /**
  * Module 48: stream analytics batch-evaluation helper.
  *
@@ -46,29 +53,27 @@ export interface Module48Metrics {
  * hit/miss timing rather than assuming a fixed percentage.
  */
 export class Module48 {
-  private readonly cacheSize: number;
   private readonly enableOptimization: boolean;
   private readonly batchChunkSize: number;
 
-  private cache = new Map<string, { withdrawable: bigint; progress: number; computedAt: number }>();
+  private readonly cache: LruMemoCache<string, CachedResult>;
   private totalProcessed = 0;
-  private cacheHits = 0;
-  private cacheMisses = 0;
   private totalExecutionTimeMs = 0;
-  private hitExecutionTimeMs = 0;
-  private missExecutionTimeMs = 0;
 
   constructor(config: Module48Config = {}) {
-    this.cacheSize = config.cacheSize ?? 1000;
+    this.cache = new LruMemoCache(config.cacheSize ?? 1000);
     this.enableOptimization = config.enableOptimization ?? true;
     this.batchChunkSize = config.batchChunkSize ?? 50;
   }
 
   /**
    * Process a list of streams using optimized batch evaluation algorithms.
+   *
+   * Delegates to `processSingleItem()` per item so `totalProcessed` and
+   * `averageExecutionTimeMs` are accurate regardless of whether callers go
+   * through this batch entry point or call `processSingleItem()` directly.
    */
   public processStreamBatch(items: StreamBatchItem[]): Module48Result[] {
-    const startTime = performance.now();
     const results: Module48Result[] = new Array(items.length);
 
     for (let i = 0; i < items.length; i += this.batchChunkSize) {
@@ -81,10 +86,6 @@ export class Module48 {
       }
     }
 
-    const elapsed = performance.now() - startTime;
-    this.totalExecutionTimeMs += elapsed;
-    this.totalProcessed += items.length;
-
     return results;
   }
 
@@ -96,20 +97,23 @@ export class Module48 {
     const nowSec = item.timestamp ?? Math.floor(Date.now() / 1000);
     const cacheKey = `${item.id}_${item.stream.withdrawn.toString()}_${item.stream.paused ? 1 : 0}_${nowSec}`;
 
-    if (this.enableOptimization && this.cache.has(cacheKey)) {
-      this.cacheHits++;
-      this.hitExecutionTimeMs += performance.now() - start;
-      const cached = this.cache.get(cacheKey)!;
-      return {
-        id: item.id,
-        withdrawable: cached.withdrawable,
-        progress: cached.progress,
-        isCached: true,
-        computedAt: cached.computedAt,
-      };
+    if (this.enableOptimization) {
+      const cached = this.cache.get(cacheKey);
+      if (cached) {
+        const elapsed = performance.now() - start;
+        this.cache.recordHit(elapsed);
+        this.totalProcessed++;
+        this.totalExecutionTimeMs += elapsed;
+        return {
+          id: item.id,
+          withdrawable: cached.withdrawable,
+          progress: cached.progress,
+          isCached: true,
+          computedAt: cached.computedAt,
+        };
+      }
     }
 
-    this.cacheMisses++;
     const withdrawable = withdrawableLocal(item.stream, nowSec);
 
     // `streamProgress` returns NaN for open-ended streams (endTime === 0);
@@ -120,16 +124,13 @@ export class Module48 {
     const computedAt = nowSec;
 
     if (this.enableOptimization) {
-      if (this.cache.size >= this.cacheSize) {
-        const firstKey = this.cache.keys().next().value;
-        if (firstKey !== undefined) {
-          this.cache.delete(firstKey);
-        }
-      }
       this.cache.set(cacheKey, { withdrawable, progress, computedAt });
     }
 
-    this.missExecutionTimeMs += performance.now() - start;
+    const elapsed = performance.now() - start;
+    this.cache.recordMiss(elapsed);
+    this.totalProcessed++;
+    this.totalExecutionTimeMs += elapsed;
 
     return {
       id: item.id,
@@ -153,29 +154,20 @@ export class Module48 {
    */
   public clearCache(): void {
     this.cache.clear();
-    this.cacheHits = 0;
-    this.cacheMisses = 0;
     this.totalProcessed = 0;
     this.totalExecutionTimeMs = 0;
-    this.hitExecutionTimeMs = 0;
-    this.missExecutionTimeMs = 0;
   }
 
   /**
    * Retrieve performance metrics, including a measured (not assumed) cache speedup.
    */
   public getPerformanceMetrics(): Module48Metrics {
-    const avgHitMs = this.cacheHits > 0 ? this.hitExecutionTimeMs / this.cacheHits : null;
-    const avgMissMs = this.cacheMisses > 0 ? this.missExecutionTimeMs / this.cacheMisses : null;
-    const measuredSpeedupPercent =
-      avgHitMs !== null && avgMissMs !== null && avgMissMs > 0
-        ? ((avgMissMs - avgHitMs) / avgMissMs) * 100
-        : null;
+    const { cacheHits, cacheMisses, measuredSpeedupPercent } = this.cache.metrics();
 
     return {
       totalProcessed: this.totalProcessed,
-      cacheHits: this.cacheHits,
-      cacheMisses: this.cacheMisses,
+      cacheHits,
+      cacheMisses,
       measuredSpeedupPercent: this.enableOptimization ? measuredSpeedupPercent : null,
       averageExecutionTimeMs: this.totalProcessed > 0 ? this.totalExecutionTimeMs / this.totalProcessed : 0,
     };

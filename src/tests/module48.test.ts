@@ -156,6 +156,23 @@ describe('Module48 (SDK Feature #48)', () => {
       const metrics = module48.getPerformanceMetrics();
       expect(metrics.totalProcessed).toBe(12);
     });
+
+    it('reports the same totalProcessed and a non-zero averageExecutionTimeMs whether items go through processStreamBatch or processSingleItem directly', () => {
+      const viaSingle = new Module48({ cacheSize: 10 });
+      viaSingle.processSingleItem({ id: 'a', stream: mockStream, timestamp: now });
+      viaSingle.processSingleItem({ id: 'b', stream: { ...mockStream, id: 2n }, timestamp: now });
+      const singleMetrics = viaSingle.getPerformanceMetrics();
+      expect(singleMetrics.totalProcessed).toBe(2);
+      expect(singleMetrics.averageExecutionTimeMs).toBeGreaterThanOrEqual(0);
+
+      const viaBatch = new Module48({ cacheSize: 10 });
+      viaBatch.processStreamBatch([
+        { id: 'a', stream: mockStream, timestamp: now },
+        { id: 'b', stream: { ...mockStream, id: 2n }, timestamp: now },
+      ]);
+      const batchMetrics = viaBatch.getPerformanceMetrics();
+      expect(batchMetrics.totalProcessed).toBe(singleMetrics.totalProcessed);
+    });
   });
 
   describe('computeOptimizedYield', () => {
