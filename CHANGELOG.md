@@ -30,6 +30,8 @@ All notable changes are documented here. Format based on [Keep a Changelog](http
 - Added a "Wallet Adapters" API reference section documenting `KeypairWalletAdapter`.
 - Documented `StreamBuilder.ratePerSecond()` and `StreamBuilder.submit()` (with full `SubmitOptions`) in `docs/api.md`, previously omitted from the Fluent Builder reference (#463).
 - Documented `ConduitClient`'s `pauseStream()`, `unpauseStream()`, and `setWallet()` convenience methods in `docs/api.md`, and fixed `setWallet()`'s JSDoc block, which had been orphaned above `pauseStream()`/`unpauseStream()` and left `setWallet()` itself undocumented.
+- Removed the stale duplicate `## Configuration` heading in `README.md` (renamed the environment-variables section to `## Environment Variables`), the non-existent `src/contracts/*-abi.ts` entries and `rollup.config.ts` (actual file is `rollup.config.mjs`) from "Directory Structure", and the Quickstart snippet that logged a raw stroops `bigint` labelled `'USDC'`. Replaced the "companion `@conduit-protocol/react` package (coming in v0.2)" claim — `@streamfi/react` (`packages/react`) already ships `StreamFiProvider`/`useStream`/`useCreateStream`/`useStreamFiClient` — with an accurate usage example, and removed the correspondingly stale `### Planned` changelog entries below. Bumped `package.json`'s `version` from `0.1.0` to `0.2.0` to match the already-released `[0.2.0]` entry below it (#495).
+- Documented `StreamBuilder.startTime()`/`endTime()`/`clawbackEnabled()`/`toContractArgs()`/`toBatchOperation()` in `docs/api.md`, and added a note under `ConduitBatcher` clarifying that `execute()` alone cannot build a real `create_stream` invocation (#435).
 
 ### Fixed
 - `Module26`, `Module36`, `Module48`, and `Module49` now share a single `LruMemoCache` helper (`src/lru-memo-cache.ts`) for eviction (and, for the first three, hit/miss speedup measurement) instead of each re-implementing the same LRU-memoizer logic (#479).
@@ -48,10 +50,8 @@ All notable changes are documented here. Format based on [Keep a Changelog](http
 - **Critical:** Validation bypass in `ConduitBatcher.execute()` — duplicate method definition allowed invalid payloads to bypass client-side validation. Now enforces mandatory schema validation before submission.
 - **Critical:** Unsafe non-null assertions in `WalletConnectAdapter.getPublicKeyFromSession()` — replaced with safe fallback handling using optional chaining and nullish coalescing. Prevents crashes on malformed CAIP-10 formats.
 - RPC timeout handling in `WalletConnectAdapter.connect()` — properly clears timeout promise on success to prevent hanging when network drops during handshake.
-
-### Planned
-- `@conduit-protocol/react` hooks package (`useStream`, `useWithdraw`, `useStreamList`)
-- `StreamsModule.streamedTotal()` wrapping the `streamed_total()` contract function
+- `StreamBuilder` now collects `startTime`, `endTime`, and `clawbackEnabled`, and exposes `toContractArgs()`/`toBatchOperation()`, which produce the exact positional, ABI-typed arguments (`sender, recipient, token, deposit_amount: i128, rate_per_sec: i128, start_time: u64, end_time: u64, clawback_enabled: bool`) the real `DripFactory.create_stream` call expects. Previously, passing `StreamBuilder.build()`'s output straight into `ConduitBatcher` produced a camelCase map with `amount` encoded as `i64` and no start/end/clawback fields at all, so a stream built via the Fluent Builder could never successfully invoke the real contract (#435).
+- `create-streamfi-app` now scaffolds from a bundled, StreamFi-wired Next.js template (a copy of `examples/nextjs-app`) by default, and writes `.env.local` with the variable names the app actually reads (`NEXT_PUBLIC_NETWORK`, `FACTORY_ADDRESS`, `STELLAR_SECRET`, `NEXT_PUBLIC_ADDRESS`) instead of `NEXT_PUBLIC_STELLAR_NETWORK`/`NEXT_PUBLIC_STELLAR_RPC_URL`/`NEXT_PUBLIC_STELLAR_HORIZON_URL`, which nothing in the codebase ever read. Previously it cloned an unrelated third-party Next.js boilerplate with no Stellar/StreamFi wiring and wrote env vars the scaffolded app ignored, so a freshly-scaffolded project could never connect. `--template <url>` still clones an external starter for anyone who wants one (#436, #494).
 
 ---
 

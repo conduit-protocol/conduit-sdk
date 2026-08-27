@@ -21,7 +21,7 @@ npm install @conduit-protocol/sdk
 ## Quickstart
 
 ```typescript
-import { ConduitClient } from '@conduit-protocol/sdk';
+import { ConduitClient, fromStroops } from '@conduit-protocol/sdk';
 import { Keypair } from '@stellar/stellar-sdk';
 
 const client = new ConduitClient({
@@ -40,9 +40,9 @@ const { streamId } = await client.streams.create({
 console.log('Stream created:', streamId);
 // Recipient earns ≈ 0.000386 USDC / second
 
-// Check withdrawable balance
+// Check withdrawable balance (in stroops — the token's smallest unit)
 const available = await client.streams.withdrawable(streamId);
-console.log('Available:', available, 'USDC');
+console.log('Available:', fromStroops(available), 'USDC');
 
 // Withdraw
 await client.streams.withdraw(streamId, available);
@@ -155,11 +155,16 @@ The `StreamBuilder` class exposes the following chainable methods:
 | `sender(address)` | `string` | Sets the sender address who funds the stream. |
 | `recipient(address)` | `string` | Sets the recipient address receiving the stream. |
 | `amount(val)` | `number` | Sets the deposit amount (in the token's smallest unit). |
+| `ratePerSecond(val)` | `number \| bigint` | Sets the stream rate in stroops/sec. Required to build real `create_stream` args — the contract has no way to derive a rate on its own. |
+| `startTime(val)` | `number` | Optional Unix timestamp; defaults to now. |
+| `endTime(val)` | `number` | Optional Unix timestamp; defaults to `0` (open-ended). |
+| `clawbackEnabled(val)` | `boolean` | Optional; defaults to `false`. |
 | `build()` | — | Validates the fields and returns the stream configuration. Throws an error if any required field is missing. |
+| `toBatchOperation()` | — | Returns a `BatchOperation` carrying the exact positional, ABI-typed args `create_stream` expects — pass it to `ConduitBatcher.executeAsync()`. |
 
 ### Batching Streams
 
-You can bundle multiple stream operations together and compile them using `ConduitBatcher`:
+You can bundle multiple stream operations together and compile them using `ConduitBatcher`. `execute()` alone only knows how to turn arbitrary objects into a generic map argument — to invoke the real `create_stream` contract, build each stream's `BatchOperation` with `toBatchOperation()` and submit through `executeAsync()`:
 
 ```typescript
 import { StreamBuilder, ConduitBatcher } from '@conduit-protocol/sdk';
@@ -169,17 +174,21 @@ const stream1 = new StreamBuilder()
   .sender('GABC...SENDER')
   .recipient('GXYZ...RECIPIENT_A')
   .amount(500)
-  .build();
+  .ratePerSecond(10n);
 
 const stream2 = new StreamBuilder()
   .token('native')
   .sender('GABC...SENDER')
   .recipient('GXYZ...RECIPIENT_B')
   .amount(1500)
-  .build();
+  .ratePerSecond(25n);
 
 // Execute batch operation
-const result = ConduitBatcher.execute([stream1, stream2]);
+const batcher = new ConduitBatcher();
+const result = await batcher.executeAsync(
+  [stream1.toBatchOperation(), stream2.toBatchOperation()],
+  { context: { network: 'testnet', contractId: 'C...', sourceAccount: 'GABC...SENDER', sequence: '123' } },
+);
 
 console.log('Batch Success:', result.success);
 console.log('Operations:', result.operations);
@@ -614,18 +623,25 @@ Event subscriptions poll the Soroban event ledger every 5 seconds by default. Pa
 
 ## Browser / React Usage
 
-The SDK works in the browser. For React apps, use the companion `@conduit-protocol/react` package (coming in v0.2) for hooks like `useStream`, `useWithdraw`, and `useStreamList`.
-
-Until then, instantiate the client once and share it via React Context:
+The SDK works in the browser. For React apps, use the companion [`@streamfi/react`](./packages/react) package
+for a `StreamFiProvider` plus hooks (`useStream`, `useCreateStream`, `useStreamFiClient`):
 
 ```typescript
-// lib/conduit.ts
-import { ConduitClient } from '@conduit-protocol/sdk';
+import { StreamFiProvider, useStream, useCreateStream } from '@streamfi/react';
 
-export const conduit = new ConduitClient({
-  network: process.env.NEXT_PUBLIC_NETWORK as 'testnet' | 'mainnet',
-  // keypair injected per-action from wallet context
-});
+function App() {
+  return (
+    <StreamFiProvider config={{ network: 'testnet' /* keypair injected per-action from wallet context */ }}>
+      <StreamPage streamId={42n} />
+    </StreamFiProvider>
+  );
+}
+
+function StreamPage({ streamId }: { streamId: bigint }) {
+  const { stream, loading, error } = useStream(streamId);
+  const { createStream, loading: creating } = useCreateStream();
+  // ...
+}
 ```
 
 ### Next.js Example
@@ -685,10 +701,6 @@ conduit-sdk/
 │   ├── errors.ts            # ConduitError + per-contract Stream/Factory/GovernorErrorCode
 │   ├── utils.ts             # toStroops, fromStroops, etc.
 │   ├── events.ts            # Event subscription logic
-│   ├── contracts/
-│   │   ├── stream-abi.ts    # DripStream XDR / spec
-│   │   ├── factory-abi.ts   # DripFactory XDR / spec
-│   │   └── governor-abi.ts  # DripGovernor XDR / spec
 │   └── types/
 │       └── index.ts         # All exported TypeScript types
 ├── examples/
@@ -698,10 +710,13 @@ conduit-sdk/
 │   ├── list-streams.ts      # List all streams for an address
 │   ├── dashboard/           # React + Vite + GraphQL dashboard
 │   └── nextjs-app/          # Next.js (App Router) example
+├── packages/
+│   └── react/               # @streamfi/react — React hooks (see Browser / React Usage)
+├── create-streamfi-app/     # `npx create-streamfi-app` scaffolding CLI
 ├── docs/
 │   └── api.md               # Full API reference (generated)
 ├── tsconfig.json
-├── rollup.config.ts
+├── rollup.config.mjs
 ├── vitest.config.ts
 ├── package.json
 └── .github/
@@ -717,7 +732,7 @@ See [`CONTRIBUTING.md`](./CONTRIBUTING.md). For the module map and call flow, se
 
 ---
 
-## Configuration
+## Environment Variables
 
 The SDK can be configured via environment variables or explicit constructor options in `ConduitClient`. A template is provided in [`.env.example`](./.env.example).
 
