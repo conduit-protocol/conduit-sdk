@@ -34,6 +34,7 @@ export class WebSocketRelayer {
   private connectPromise: Promise<void> | null = null;
   private reconnectAttempts = 0;
   private reconnectEnabled = true;
+  private reconnectExhausted = false;
   private maxReconnectAttempts: number;
   private reconnectDelayMs: number;
   private pendingMessages: WebSocketMessage[] = [];
@@ -97,10 +98,29 @@ export class WebSocketRelayer {
       throw new Error('WebSocketRelayer has been destroyed');
     }
     this.reconnectEnabled = true;
+    this.reconnectExhausted = false;
     if (this.connectPromise) {
       return this.connectPromise;
     }
 
+    // Assign connectPromise synchronously — before the first `await` — so that
+    // any connect() call arriving before this one settles sees it on the check
+    // above and shares this promise instead of racing into a second
+    // establishConnection() (see #492). Assigning it only after acquireLock()
+    // resolves left a window where two near-simultaneous callers both passed
+    // the check and both queued on the lock.
+    const promise = this.doConnect();
+    this.connectPromise = promise;
+    try {
+      await promise;
+    } finally {
+      if (this.connectPromise === promise) {
+        this.connectPromise = null;
+      }
+    }
+  }
+
+  private async doConnect(): Promise<void> {
     await this.acquireLock();
     try {
       if (this.ws && this.ws.readyState === 1) {
@@ -108,11 +128,9 @@ export class WebSocketRelayer {
       }
 
       this.emitStateChange('connecting');
-      this.connectPromise = this.establishConnection();
-      await this.connectPromise;
+      await this.establishConnection();
     } finally {
       this.releaseLock();
-      this.connectPromise = null;
     }
   }
 
@@ -152,6 +170,7 @@ export class WebSocketRelayer {
           if (settled) return;
           settled = true;
           this.reconnectAttempts = 0;
+          this.reconnectExhausted = false;
           this.flushPendingMessages();
           this.emitStateChange('connected');
           resolve();
@@ -239,8 +258,28 @@ export class WebSocketRelayer {
     }
   }
 
+  /**
+   * True once reconnection has been given up on — attempts exhausted, socket
+   * still not open, but the relayer wasn't explicitly disconnected/destroyed.
+   * `send()` uses this to reject outright instead of queueing messages that
+   * will never be flushed (see #491).
+   */
+  private isPermanentlyDown(): boolean {
+    return (
+      !this.isDestroyed &&
+      this.reconnectEnabled &&
+      this.reconnectAttempts >= this.maxReconnectAttempts &&
+      (!this.ws || this.ws.readyState !== 1)
+    );
+  }
+
   private async attemptReconnect(): Promise<void> {
-    if (!this.shouldAttemptReconnect()) return;
+    if (!this.shouldAttemptReconnect()) {
+      if (this.isPermanentlyDown()) {
+        this.reconnectExhausted = true;
+      }
+      return;
+    }
 
     await this.acquireLock();
     try {
@@ -294,6 +333,11 @@ export class WebSocketRelayer {
     }
   }
 
+  /**
+   * Push onto the bounded pending queue, dropping the oldest message once
+   * `maxPendingMessages` is reached (see #491) — `send()` must route through
+   * this rather than pushing to `pendingMessages` directly.
+   */
   private _queueMessage(message: WebSocketMessage): void {
     if (this.pendingMessages.length >= this.maxPendingMessages) {
       this.pendingMessages.shift();
@@ -305,17 +349,29 @@ export class WebSocketRelayer {
     if (this.isDestroyed) {
       throw new Error('WebSocketRelayer has been destroyed');
     }
+    if (this.reconnectExhausted) {
+      throw new Error(
+        `WebSocketRelayer: connection to ${this.url} is down and reconnect attempts ` +
+        `(${this.maxReconnectAttempts}) are exhausted; message was not queued`,
+      );
+    }
 
     if (!this.ws || this.ws.readyState !== 1) {
-      this.pendingMessages.push(message);
+      this._queueMessage(message);
       return;
     }
 
     await this.acquireLock();
     try {
       if (this.isDestroyed) throw new Error('WebSocketRelayer has been destroyed');
+      if (this.reconnectExhausted) {
+        throw new Error(
+          `WebSocketRelayer: connection to ${this.url} is down and reconnect attempts ` +
+          `(${this.maxReconnectAttempts}) are exhausted; message was not queued`,
+        );
+      }
       if (!this.ws || this.ws.readyState !== 1) {
-        this.pendingMessages.push(message);
+        this._queueMessage(message);
         return;
       }
 
@@ -330,6 +386,7 @@ export class WebSocketRelayer {
     this.reconnectEnabled = false;
     this.connectPromise = null;
     this.reconnectAttempts = 0;
+    this.reconnectExhausted = false;
 
     if (this.ws) {
       try {
