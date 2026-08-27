@@ -19,7 +19,7 @@ jobs:
           cache: npm
 
       - run: npm ci
-      - run: npm test
+      - run: npx vitest --run
 
   lint-typecheck:
     name: Lint & typecheck
@@ -93,5 +93,5 @@ jobs:
         working-directory: packages/react
       - run: npm run typecheck
         working-directory: packages/react
-      - run: npm test
+      - run: npx vitest --run
         working-directory: packages/react

@@ -1,23 +1,23 @@
 import type { StreamInfo } from './types/index.js';
-import { withdrawableLocal, streamProgress } from './utils.js';
+import { withdrawableLocal } from './utils.js';
 import { LruMemoCache } from './lru-memo-cache.js';
 
-export interface Module48Config {
+export interface Module49Config {
   /** Maximum number of calculated results to keep in the fast lookup cache */
   cacheSize?: number;
-  /** Enable memoized calculation; actual speedup depends on hit rate — see `getPerformanceMetrics()` for a measured value */
+  /** Enable performance optimization via memoization and pre-allocated buffer processing */
   enableOptimization?: boolean;
   /** Preferred chunk size for batch processing stream items */
   batchChunkSize?: number;
 }
 
-export interface StreamBatchItem {
+export interface StreamBatchItem49 {
   id: string;
   stream: StreamInfo;
   timestamp?: number;
 }
 
-export interface Module48Result {
+export interface Module49Result {
   id: string;
   withdrawable: bigint;
   progress: number;
@@ -25,42 +25,30 @@ export interface Module48Result {
   computedAt: number;
 }
 
-export interface Module48Metrics {
+export interface Module49Metrics {
   totalProcessed: number;
   cacheHits: number;
   cacheMisses: number;
-  /**
-   * Measured, not assumed: `(avgMissMs - avgHitMs) / avgMissMs * 100`, based
-   * on this instance's own accumulated timings. `null` until at least one
-   * hit and one miss have both been recorded (nothing to compare yet).
-   */
-  measuredSpeedupPercent: number | null;
+  hitRate: number;
   averageExecutionTimeMs: number;
 }
 
-interface CachedResult {
-  withdrawable: bigint;
-  progress: number;
-  computedAt: number;
-}
-
 /**
- * Module 48: stream analytics batch-evaluation helper.
+ * Module 49: High-Performance SDK Streaming Analytics Engine
  *
- * Implements Feature #48 with memoized withdrawable/progress calculation.
- * Speedup from caching is workload-dependent (proportional to cache hit
- * rate); call `getPerformanceMetrics()` for this instance's own measured
- * hit/miss timing rather than assuming a fixed percentage.
+ * Implements Feature #49 with memoized calculation algorithms for batch stream evaluation.
  */
-export class Module48 {
+export class Module49 {
   private readonly enableOptimization: boolean;
   private readonly batchChunkSize: number;
 
-  private readonly cache: LruMemoCache<string, CachedResult>;
+  private readonly cache: LruMemoCache<string, { withdrawable: bigint; progress: number; computedAt: number }>;
   private totalProcessed = 0;
+  private cacheHits = 0;
+  private cacheMisses = 0;
   private totalExecutionTimeMs = 0;
 
-  constructor(config: Module48Config = {}) {
+  constructor(config: Module49Config = {}) {
     this.cache = new LruMemoCache(config.cacheSize ?? 1000);
     this.enableOptimization = config.enableOptimization ?? true;
     this.batchChunkSize = config.batchChunkSize ?? 50;
@@ -68,13 +56,10 @@ export class Module48 {
 
   /**
    * Process a list of streams using optimized batch evaluation algorithms.
-   *
-   * Delegates to `processSingleItem()` per item so `totalProcessed` and
-   * `averageExecutionTimeMs` are accurate regardless of whether callers go
-   * through this batch entry point or call `processSingleItem()` directly.
    */
-  public processStreamBatch(items: StreamBatchItem[]): Module48Result[] {
-    const results: Module48Result[] = new Array(items.length);
+  public processStreamBatch(items: StreamBatchItem49[]): Module49Result[] {
+    const startTime = performance.now();
+    const results: Module49Result[] = new Array(items.length);
 
     for (let i = 0; i < items.length; i += this.batchChunkSize) {
       const chunkEnd = Math.min(i + this.batchChunkSize, items.length);
@@ -86,24 +71,24 @@ export class Module48 {
       }
     }
 
+    const elapsed = performance.now() - startTime;
+    this.totalExecutionTimeMs += elapsed;
+    this.totalProcessed += items.length;
+
     return results;
   }
 
   /**
    * Evaluate a single stream item with fast-path cache lookup.
    */
-  public processSingleItem(item: StreamBatchItem): Module48Result {
-    const start = performance.now();
+  public processSingleItem(item: StreamBatchItem49): Module49Result {
     const nowSec = item.timestamp ?? Math.floor(Date.now() / 1000);
     const cacheKey = `${item.id}_${item.stream.withdrawn.toString()}_${item.stream.paused ? 1 : 0}_${nowSec}`;
 
     if (this.enableOptimization) {
       const cached = this.cache.get(cacheKey);
       if (cached) {
-        const elapsed = performance.now() - start;
-        this.cache.recordHit(elapsed);
-        this.totalProcessed++;
-        this.totalExecutionTimeMs += elapsed;
+        this.cacheHits++;
         return {
           id: item.id,
           withdrawable: cached.withdrawable,
@@ -114,23 +99,26 @@ export class Module48 {
       }
     }
 
+    this.cacheMisses++;
     const withdrawable = withdrawableLocal(item.stream, nowSec);
 
-    // `streamProgress` returns NaN for open-ended streams (endTime === 0);
-    // treat that as the midpoint (0.5), matching Module36's normalisation.
-    const rawProgress = streamProgress(item.stream, nowSec);
-    const progress = Number.isNaN(rawProgress) ? 0.5 : rawProgress;
+    let progress = 0;
+    const { startTime, endTime } = item.stream;
+    if (nowSec >= startTime) {
+      if (endTime === 0) {
+        progress = 0.5; // open-ended active
+      } else if (nowSec >= endTime) {
+        progress = 1.0;
+      } else {
+        progress = (nowSec - startTime) / (endTime - startTime);
+      }
+    }
 
     const computedAt = nowSec;
 
     if (this.enableOptimization) {
       this.cache.set(cacheKey, { withdrawable, progress, computedAt });
     }
-
-    const elapsed = performance.now() - start;
-    this.cache.recordMiss(elapsed);
-    this.totalProcessed++;
-    this.totalExecutionTimeMs += elapsed;
 
     return {
       id: item.id,
@@ -154,21 +142,24 @@ export class Module48 {
    */
   public clearCache(): void {
     this.cache.clear();
+    this.cacheHits = 0;
+    this.cacheMisses = 0;
     this.totalProcessed = 0;
     this.totalExecutionTimeMs = 0;
   }
 
   /**
-   * Retrieve performance metrics, including a measured (not assumed) cache speedup.
+   * Retrieve performance metrics including hit rate and raw lookup counters.
    */
-  public getPerformanceMetrics(): Module48Metrics {
-    const { cacheHits, cacheMisses, measuredSpeedupPercent } = this.cache.metrics();
+  public getPerformanceMetrics(): Module49Metrics {
+    const totalRequests = this.cacheHits + this.cacheMisses;
+    const hitRate = totalRequests > 0 ? this.cacheHits / totalRequests : 0;
 
     return {
       totalProcessed: this.totalProcessed,
-      cacheHits,
-      cacheMisses,
-      measuredSpeedupPercent: this.enableOptimization ? measuredSpeedupPercent : null,
+      cacheHits: this.cacheHits,
+      cacheMisses: this.cacheMisses,
+      hitRate: this.enableOptimization ? hitRate : 0,
       averageExecutionTimeMs: this.totalProcessed > 0 ? this.totalExecutionTimeMs / this.totalProcessed : 0,
     };
   }

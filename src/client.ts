@@ -53,13 +53,64 @@ function assertWalletNetworkMatch(
   }
 }
 
+/**
+ * Main entry point for interacting with the StreamFi protocol.
+ *
+ * Provides a high-level API to create, manage, and query streams.
+ *
+ * @example
+ * ```typescript
+ * import { ConduitClient } from '@conduit/streamfi-sdk';
+ * import { Keypair } from '@stellar/stellar-sdk';
+ *
+ * // Example configuration using variables typically loaded from .env
+ * // STELLAR_SECRET=S...
+ * // NEXT_PUBLIC_NETWORK=testnet
+ * const config = {
+ *   network: 'testnet',
+ *   keypair: Keypair.fromSecret('STELLAR_SECRET'),
+ * };
+ *
+ * const client = new ConduitClient(config);
+ * ```
+ */
 export class ConduitClient {
   readonly streams:  StreamsModule;
-  readonly factory:  FactoryModule;
   readonly governor: GovernorModule;
+
+  /**
+   * Access the DripFactory read-query module.
+   *
+   * @throws {Error} if `factoryAddress` was not supplied in `ConduitConfig`.
+   *   Pass `factoryAddress` to the constructor to enable factory queries:
+   *   ```ts
+   *   new ConduitClient({ network: 'testnet', factoryAddress: 'C...' })
+   *   ```
+   */
+  get factory(): FactoryModule {
+    if (!this._factory) {
+      // Construct lazily so that callers who don't use factory queries
+      // (e.g. read-only stream operations) are not forced to supply
+      // factoryAddress.  FactoryModule's constructor will throw with a
+      // clear error if factoryAddress is missing.
+      this._factory = new FactoryModule(this.config);
+    }
+    return this._factory;
+  }
+  private _factory: FactoryModule | undefined;
 
   private readonly config: Required<Pick<ConduitConfig, 'network' | 'rpcUrl'>> & ConduitConfig;
 
+  /**
+   * Initializes a new ConduitClient instance.
+   *
+   * Validates the configured network against supported networks to ensure
+   * immediate failure on misconfiguration.
+   *
+   * @param config - Configuration object for the client.
+   * @throws {UnsupportedChainError} If the provided `network` is not supported.
+   * @throws {UnsupportedChainError} If a `wallet` is provided and its chain ID does not match the configured `network`.
+   */
   constructor(config: ConduitConfig) {
     // Validate the network immediately so developers get a clear error at
     // initialisation time rather than an obscure RPC failure later.
@@ -78,7 +129,6 @@ export class ConduitClient {
     }
 
     this.streams  = new StreamsModule(this.config);
-    this.factory  = new FactoryModule(this.config);
     this.governor = new GovernorModule(this.config);
   }
 
@@ -89,7 +139,8 @@ export class ConduitClient {
    * resumed later with {@link unpauseStream}.
    *
    * @param streamId - The numeric stream ID as a string (e.g. `"42"`).
-   * @returns The confirmed transaction hash.
+   * @returns A promise that resolves to the confirmed transaction hash.
+   * @throws {Error} If the transaction fails to submit or confirm.
    */
   async pauseStream(streamId: string): Promise<string> {
     return this.streams.pause(streamId);
@@ -102,7 +153,8 @@ export class ConduitClient {
    * and end times are shifted forward by the duration the stream was paused.
    *
    * @param streamId - The numeric stream ID as a string (e.g. `"42"`).
-   * @returns The confirmed transaction hash.
+   * @returns A promise that resolves to the confirmed transaction hash.
+   * @throws {Error} If the transaction fails to submit or confirm.
    */
   async unpauseStream(streamId: string): Promise<string> {
     return this.streams.resume(streamId);
@@ -125,6 +177,7 @@ export class ConduitClient {
    *   uses `config.keypair` for simulation fee sourcing. It does not hold
    *   a wallet reference and is unaffected by `setWallet()`.
    *
+   * @param wallet - The wallet adapter to use for signing transactions.
    * @throws {UnsupportedChainError} if the wallet's `chainId` is on a
    *   different network than the one this client was initialised with.
    */

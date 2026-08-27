@@ -1,5 +1,6 @@
 import type { StreamInfo } from './types/index.js';
 import { withdrawableLocal } from './utils.js';
+import { LruMemoCache } from './lru-memo-cache.js';
 
 export interface Module26Config {
   /** Maximum number of portfolio summaries retained in the LRU cache */
@@ -48,6 +49,63 @@ function classifyStream(stream: StreamInfo, nowSec: number): 'active' | 'paused'
   return 'active';
 }
 
+const FNV_OFFSET_BASIS = 0x811c9dc5;
+const FNV_PRIME = 0x01000193;
+const DJB2_SEED = 5381;
+
+function fnv1aFold(hash: number, input: string): number {
+  let h = hash;
+  for (let i = 0; i < input.length; i++) {
+    h ^= input.charCodeAt(i);
+    h = Math.imul(h, FNV_PRIME);
+  }
+  return h;
+}
+
+function djb2Fold(hash: number, input: string): number {
+  let h = hash;
+  for (let i = 0; i < input.length; i++) {
+    h = Math.imul(h, 33) ^ input.charCodeAt(i);
+  }
+  return h;
+}
+
+/**
+ * Incremental two-hash fingerprint (FNV-1a + djb2) of the portfolio's
+ * cache-relevant fields, folding each item's
+ * id/withdrawn/paused/cancelled/endTime/timestamp into two running 32-bit
+ * hashes instead of allocating a full `items.map(...).join('|')` string
+ * (which can run to many KB for a large portfolio) on every call, including
+ * cache hits. Combining two independent 32-bit hashes into the key (rather
+ * than relying on one alone) keeps collision odds negligible at realistic
+ * cache volumes -- a single 32-bit hash hits the birthday bound around tens
+ * of thousands of distinct portfolios, which is reachable in a long-running
+ * instance and would silently return the wrong cached summary.
+ */
+function fingerprintPortfolio(items: PortfolioStreamItem[], nowSec: number): string {
+  let h1 = FNV_OFFSET_BASIS;
+  let h2 = DJB2_SEED;
+  for (const item of items) {
+    const ts = item.timestamp ?? nowSec;
+    const fields = [
+      item.id,
+      ':',
+      item.stream.withdrawn.toString(),
+      item.stream.paused ? ':1:' : ':0:',
+      item.stream.cancelled ? '1:' : '0:',
+      String(item.stream.endTime),
+      ':',
+      String(ts),
+      '|',
+    ];
+    for (const field of fields) {
+      h1 = fnv1aFold(h1, field);
+      h2 = djb2Fold(h2, field);
+    }
+  }
+  return `${(h1 >>> 0).toString(36)}:${(h2 >>> 0).toString(36)}`;
+}
+
 /**
  * Module 26: stream portfolio aggregator.
  *
@@ -57,20 +115,15 @@ function classifyStream(stream: StreamInfo, nowSec: number): 'active' | 'paused'
  * timing rather than assuming a fixed percentage.
  */
 export class Module26 {
-  private readonly cacheSize: number;
   private readonly enableOptimization: boolean;
   private readonly batchChunkSize: number;
 
-  private cache = new Map<string, PortfolioSummary>();
+  private readonly cache: LruMemoCache<string, PortfolioSummary>;
   private totalAggregations = 0;
-  private cacheHits = 0;
-  private cacheMisses = 0;
   private totalExecutionTimeMs = 0;
-  private hitExecutionTimeMs = 0;
-  private missExecutionTimeMs = 0;
 
   constructor(config: Module26Config = {}) {
-    this.cacheSize = config.cacheSize ?? 1000;
+    this.cache = new LruMemoCache(config.cacheSize ?? 1000);
     this.enableOptimization = config.enableOptimization ?? true;
     this.batchChunkSize = config.batchChunkSize ?? 50;
   }
@@ -80,28 +133,19 @@ export class Module26 {
    */
   public aggregatePortfolio(items: PortfolioStreamItem[], nowSec = Math.floor(Date.now() / 1000)): PortfolioSummary {
     const start = performance.now();
-    const cacheKey = items
-      .map((item) => {
-        const ts = item.timestamp ?? nowSec;
-        return `${item.id}:${item.stream.withdrawn}:${item.stream.paused ? 1 : 0}:${item.stream.cancelled ? 1 : 0}:${item.stream.endTime}:${ts}`;
-      })
-      .join('|');
 
+    let cacheKey: string | undefined;
     if (this.enableOptimization) {
+      cacheKey = fingerprintPortfolio(items, nowSec);
       const cached = this.cache.get(cacheKey);
       if (cached) {
         const elapsed = performance.now() - start;
-        this.cacheHits++;
+        this.cache.recordHit(elapsed);
         this.totalAggregations++;
         this.totalExecutionTimeMs += elapsed;
-        this.hitExecutionTimeMs += elapsed;
-        this.cache.delete(cacheKey);
-        this.cache.set(cacheKey, cached);
         return { ...cached, isCached: true };
       }
     }
-
-    this.cacheMisses++;
 
     let totalWithdrawable = 0n;
     let totalRatePerSecond = 0n;
@@ -142,18 +186,14 @@ export class Module26 {
       computedAt: nowSec,
     };
 
-    if (this.enableOptimization) {
-      if (this.cache.size >= this.cacheSize) {
-        const oldest = this.cache.keys().next().value;
-        if (oldest !== undefined) this.cache.delete(oldest);
-      }
+    if (this.enableOptimization && cacheKey !== undefined) {
       this.cache.set(cacheKey, summary);
     }
 
     const elapsed = performance.now() - start;
+    this.cache.recordMiss(elapsed);
     this.totalAggregations++;
     this.totalExecutionTimeMs += elapsed;
-    this.missExecutionTimeMs += elapsed;
     return summary;
   }
 
@@ -172,26 +212,17 @@ export class Module26 {
 
   public clearCache(): void {
     this.cache.clear();
-    this.cacheHits = 0;
-    this.cacheMisses = 0;
     this.totalAggregations = 0;
     this.totalExecutionTimeMs = 0;
-    this.hitExecutionTimeMs = 0;
-    this.missExecutionTimeMs = 0;
   }
 
   public getPerformanceMetrics(): Module26Metrics {
-    const avgHitMs = this.cacheHits > 0 ? this.hitExecutionTimeMs / this.cacheHits : null;
-    const avgMissMs = this.cacheMisses > 0 ? this.missExecutionTimeMs / this.cacheMisses : null;
-    const measuredSpeedupPercent =
-      avgHitMs !== null && avgMissMs !== null && avgMissMs > 0
-        ? ((avgMissMs - avgHitMs) / avgMissMs) * 100
-        : null;
+    const { cacheHits, cacheMisses, measuredSpeedupPercent } = this.cache.metrics();
 
     return {
       totalAggregations: this.totalAggregations,
-      cacheHits: this.cacheHits,
-      cacheMisses: this.cacheMisses,
+      cacheHits,
+      cacheMisses,
       measuredSpeedupPercent: this.enableOptimization ? measuredSpeedupPercent : null,
       averageExecutionTimeMs:
         this.totalAggregations > 0 ? this.totalExecutionTimeMs / this.totalAggregations : 0,

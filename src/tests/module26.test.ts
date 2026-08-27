@@ -126,6 +126,25 @@ describe('Module26 (SDK Feature #26)', () => {
       expect(second.isCached).toBe(false);
       expect(unopt.getPerformanceMetrics().measuredSpeedupPercent).toBeNull();
     });
+
+    it('does not treat portfolios with different cache-relevant fields as a cache hit', () => {
+      const items = [{ id: 'a', stream: activeStream, timestamp: now }];
+      const first = module26.aggregatePortfolio(items, now);
+      expect(first.isCached).toBe(false);
+
+      const changedWithdrawn = [
+        { id: 'a', stream: { ...activeStream, withdrawn: 1n }, timestamp: now },
+      ];
+      const second = module26.aggregatePortfolio(changedWithdrawn, now);
+      expect(second.isCached).toBe(false);
+
+      const changedId = [{ id: 'b', stream: activeStream, timestamp: now }];
+      const third = module26.aggregatePortfolio(changedId, now);
+      expect(third.isCached).toBe(false);
+
+      const repeat = module26.aggregatePortfolio(items, now);
+      expect(repeat.isCached).toBe(true);
+    });
   });
 
   describe('projectRemaining', () => {

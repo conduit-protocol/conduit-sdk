@@ -148,6 +148,31 @@ describe('NonceManager — Concurrent Nonce Integration Tests', () => {
     m.destroy();
   });
 
+  it('throws a descriptive error for an unparseable string startNonce', () => {
+    // Regression test for #458: an unparseable nonce must not silently
+    // coerce to 0n, which would mask a caller bug (e.g. a stringified
+    // undefined or a malformed network response) as an explicit 0.
+    expect(() => new NonceManager({ startNonce: 'not-a-number' })).toThrow(
+      /invalid nonce value "not-a-number"/,
+    );
+  });
+
+  it('throws for an empty-string startNonce instead of silently using 0n', () => {
+    expect(() => new NonceManager({ startNonce: '', maxNonce: '100' })).toThrow(
+      /empty string/,
+    );
+  });
+
+  it('accepts numeric and bigint startNonce values', () => {
+    const fromNumber = new NonceManager({ startNonce: 42, maxNonce: 100 });
+    expect(fromNumber.current).toBe(42n);
+    fromNumber.destroy();
+
+    const fromBigInt = new NonceManager({ startNonce: 7n, maxNonce: 100n });
+    expect(fromBigInt.current).toBe(7n);
+    fromBigInt.destroy();
+  });
+
   it('reset clears state and allows reacquisition', async () => {
     const lock1 = await manager.acquire();
     lock1.release();

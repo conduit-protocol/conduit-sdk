@@ -59,6 +59,20 @@ Current withdrawable balance in stroops. Read-only, no transaction.
 
 ---
 
+### `streamedTotal(streamId) → Promise<bigint>`
+
+Cumulative amount streamed since the stream started, in stroops — regardless of
+withdrawals. Unlike `withdrawable()`, which reflects only the unwithdrawn
+portion, this value never resets after a withdrawal, so it is suitable for
+progress displays that should keep counting up. Read-only, no transaction.
+
+```typescript
+const total = await client.streams.streamedTotal(streamId);
+// Returns: bigint (cumulative stroops streamed since start)
+```
+
+---
+
 ### `withdraw(streamId, amount?) → Promise<string>`
 
 | Param | Type | Notes |
@@ -68,7 +82,7 @@ Current withdrawable balance in stroops. Read-only, no transaction.
 
 **Returns:** Transaction hash  
 **Requires:** `keypair` set (recipient)  
-**Throws:** `ConduitError` with `contract: 'stream'` — `StreamErrorCode.NothingToWithdraw`, `.NotAuthorized`, `.StreamCancelled`, `.InvalidAmount`
+**Throws:** `Error` (client-side) if an explicit `amount` is `<= 0n` — validated before any RPC round-trip, mirroring the contract's `InvalidAmount` guard; `ConduitError` with `contract: 'stream'` — `StreamErrorCode.NothingToWithdraw`, `.NotAuthorized`, `.StreamCancelled`, `.InvalidAmount`
 
 ---
 
@@ -104,7 +118,35 @@ Resumes a paused stream. Paused duration is excluded from streaming time.
 Adds tokens to the stream balance. Extends effective stream duration.
 
 **Requires:** `keypair` set (sender)  
-**Throws:** `ConduitError` with `contract: 'stream'` — `StreamErrorCode.StreamCancelled`, `.InvalidAmount`
+**Throws:** `Error` (client-side) if `amount` is `<= 0n` — validated before any RPC round-trip; `ConduitError` with `contract: 'stream'` — `StreamErrorCode.StreamCancelled`, `.InvalidAmount`
+
+---
+
+### `forceCancel(streamId) → Promise<string>`
+
+Force-cancels a **paused** stream as the recipient, once the 30-day pause threshold has
+elapsed. Settles atomically like `cancel()`: the recipient's earned-but-unwithdrawn tokens are
+paid out and the unstreamed remainder is refunded to the sender. Prevents a sender from
+indefinitely pausing a stream to hold unstreamed tokens hostage.
+
+**Requires:** `keypair` set (recipient)  
+**Throws:** `ConduitError` with `contract: 'stream'` — `StreamErrorCode.NotPaused`, `.PauseThresholdNotMet`, `.StreamCancelled`, `.NotAuthorized`
+
+---
+
+### `transferRecipient(streamId, newRecipient) → Promise<string>`
+
+Transfers the recipient role to a new address (current recipient only). The new recipient
+inherits all rights, including the withdrawable balance accrued up to the moment of transfer.
+
+| Param | Type | Notes |
+|-------|------|-------|
+| `streamId` | `bigint \| string` | |
+| `newRecipient` | `string` | Stellar G-address of the new recipient |
+
+**Returns:** Transaction hash  
+**Requires:** `keypair` set (recipient)  
+**Throws:** `Error` (client-side) if `newRecipient` is empty; `ConduitError` with `contract: 'stream'` — `StreamErrorCode.NotAuthorized`, `.StreamCancelled`
 
 ---
 
@@ -118,7 +160,7 @@ Reclaims unstreamed tokens. Only works if `clawbackEnabled` was `true` at creati
 
 ---
 
-### `list(params) → Promise<StreamInfo[]>`
+### `list(params) → Promise<PaginatedStreams>`
 
 | Param | Type | Notes |
 |-------|------|-------|
@@ -126,6 +168,26 @@ Reclaims unstreamed tokens. Only works if `clawbackEnabled` was `true` at creati
 | `recipient` | `string?` | Filter by recipient address |
 | `offset` | `number?` | Default `0` |
 | `limit` | `number?` | Default `20`, max `100` |
+| `cursor` | `string?` | Opaque base64-encoded cursor from a previous page's `nextCursor`; takes precedence over `offset` when both are provided. Throws `Invalid cursor` on malformed input |
+
+**Returns:** a page of results plus pagination metadata:
+
+```typescript
+interface PaginatedStreams {
+  streams:     StreamInfo[];  // stream info for this page
+  hasNextPage: boolean;       // whether more results exist after this page
+  totalCount:  bigint;        // number of filtered stream IDs seen through the end of this page
+  offset:      number;        // the offset used for this page
+  limit:       number;        // the limit used for this page
+  nextCursor?: string;        // opaque cursor for the next page; present only when hasNextPage is true
+}
+```
+
+Pass a page's `nextCursor` back as `cursor` to fetch the next page (see [`examples/list-streams.ts`](../examples/list-streams.ts)).
+
+When **both** `sender` and `recipient` are given, the result is the **union** of the two
+filters (streams where the address is either sender or recipient), de-duplicated — neither
+filter is silently dropped.
 
 ---
 
@@ -147,13 +209,13 @@ const sub = client.streams.subscribe(streamId, {
 sub.unsubscribe();
 ```
 
-> **Only `amount` (on `onWithdraw`/`onClawback`) is real.** Every other numeric/timestamp field —
-> `totalWithdrawn`, `remaining`, `refundAmount`, `withdrawnSoFar`, `pausedAt`, `withdrawable`,
-> `resumedAt`, `newBalance` — is a hardcoded `0` / `0n` placeholder in `src/events.ts`
-> (`dispatchEvent`), marked `// TODO: parse tuple data`. The contracts emit these as multi-value
-> tuples (e.g. `stream_withdrawn` → `{ amount, total_withdrawn, remaining }`), and the parser
-> doesn't decode tuple `ScVal`s yet — only the single-value case. Don't rely on these fields
-> until that's implemented; re-fetch via `client.streams.get(streamId)` instead.
+> **All event payload fields are decoded.** `src/events.ts`'s `dispatchEvent()` parses every
+> multi-field event from its tuple `ScVal`s: `onWithdraw` → `{ recipient, amount,
+> totalWithdrawn, remaining }`, `onCancel` → `{ sender, refundAmount, withdrawnSoFar }`,
+> `onPause` → `{ sender, pausedAt, withdrawable }`, `onTopUp` → `{ sender, amount, newBalance }`.
+> Single-field events are decoded from their bare scalar: `onResume` → `{ sender, resumedAt }`,
+> `onClawback` → `{ sender, amount }`. These fields are real values from the chain — no
+> placeholder `0`/`0n` values remain.
 
 ---
 
@@ -357,7 +419,9 @@ clearServerCache();
 > **Internal usage:** All SDK functions that interact with the Soroban RPC (`buildContractCallTx`,
 > `simulateReadOnly`, `invokeContract`, `StreamsModule`, `subscribeToStream`, etc.) build their
 > server through an internal wrapper that calls `getServer` for the cached instance and adds
-> automatic retry-with-backoff on rate-limit errors (HTTP 429/503). Calling `getServer` yourself
+> automatic retry-with-backoff on rate-limit errors (HTTP 429). HTTP 503 (Service Unavailable) is
+> **not** retried — it is surfaced as a `RpcServiceUnavailableError` so callers can fail over to a
+> different RPC URL instead of retrying a node that is down. Calling `getServer` yourself
 > gives you the cached-but-unwrapped instance — no automatic retry — so you do not need to call
 > it yourself unless you are using the low-level Soroban helpers directly and want to manage
 > retries on your own.
@@ -487,7 +551,16 @@ A helper class to build stream configurations with method chaining.
 * `sender(address: string): this` - Sets the sender address.
 * `recipient(address: string): this` - Sets the recipient address.
 * `amount(val: number): this` - Sets the deposit amount in the smallest unit (stroops).
-* `build(): StreamConfig` - Validates and returns the built stream configuration. Throws if any required field is missing.
+* `ratePerSecond(val: number | bigint): this` - Sets the stream rate in stroops per second, as an alternative to `amount()`-only streams. Accepts a `number` or `bigint`; `bigint` values are serialised to strings before network submission to avoid Safari/WebKit `JSON.stringify` quirks.
+* `build(): StreamConfig` - Validates and returns the built stream configuration. Throws if any required field is missing. Includes `ratePerSecond` in the result when it was set.
+* `submit(submitFn, options?): Promise<unknown>` - Builds the payload and submits it through `submitFn` with automatic retries (exponential backoff), concurrency control via an internal semaphore, a pending queue with backpressure, and `AbortSignal` support. Throws if the builder was destroyed or the queue is full.
+
+  Options (`SubmitOptions`):
+  * `maxRetries?: number` - Max retry attempts per payload (default `3`).
+  * `retryDelayMs?: number` - Base backoff delay in ms, doubled per retry (default `100`).
+  * `concurrency?: number` - Max concurrent in-flight submissions (default `10`).
+  * `maxQueueSize?: number` - Max pending queue size before backpressure kicks in (default `100`).
+  * `signal?: AbortSignal` - Aborts an in-flight submission.
 
 ```typescript
 import { StreamBuilder } from '@conduit-protocol/sdk';
@@ -498,15 +571,31 @@ const stream = new StreamBuilder()
   .recipient('GB...')
   .amount(1000)
   .build();
+
+// ratePerSecond is an alternative to amount():
+const drip = new StreamBuilder()
+  .token('USDC')
+  .sender('GD...')
+  .recipient('GB...')
+  .ratePerSecond(10n) // 10 stroops/sec
+  .build();
+
+// submit() handles retries, backpressure and abort for you:
+const result = await new StreamBuilder()
+  .token('USDC')
+  .sender('GD...')
+  .recipient('GB...')
+  .amount(1000)
+  .submit(async (payload) => submitToNetwork(payload), { maxRetries: 5 });
 ```
 
 ### `ConduitBatcher`
 
-A utility class to bundle multiple stream operations with mandatory client-side validation.
+A utility class to bundle multiple stream operations with mandatory client-side validation. `execute`/`executeAsync` are **instance methods** — instantiate with `new ConduitBatcher()` first (see [`examples/fluent-builder.ts`](../examples/fluent-builder.ts)).
 
 #### Methods
 
-* `static execute(streams: Record<string, unknown>[]): BatchResult` - Validates and bundles the list of stream configurations into a single transaction. Returns `{ success: false, errors: [...] }` if validation fails instead of throwing.
+* `execute(streams: Record<string, unknown>[], options?: BatchExecuteOptions): BatchResult` - Validates and bundles the list of stream configurations into a single transaction. Returns `{ success: false, errors: [...] }` if validation fails instead of throwing.
 
 **Validation Rules:**
 - Payload must be a non-null, non-empty array
@@ -516,16 +605,16 @@ A utility class to bundle multiple stream operations with mandatory client-side 
 ```typescript
 import { ConduitBatcher } from '@conduit-protocol/sdk';
 
-const result = ConduitBatcher.execute([stream1, stream2]);
+const result = new ConduitBatcher().execute([stream1, stream2]);
 if (!result.success) {
   console.error('Validation errors:', result.errors);
   return;
 }
 ```
 
-* `static executeAsync(operations: BatchOperation[], signal?: AbortSignal): Promise<BatchResult>` - Asynchronously execute a batch with abort signal support.
+* `executeAsync(operations: BatchOperation[], signalOrOptions?: AbortSignal | BatchExecuteAsyncOptions): Promise<BatchResult>` - Asynchronously execute a batch with abort signal / options support.
 
-**Throws:** `ConduitError` if batcher is destroyed.
+**Throws:** `Error` if batcher is destroyed.
 
 ---
 
@@ -564,123 +653,6 @@ immediately if the lock is free, or queues behind the current holder otherwise.
 * `safeAcquire(retries = 3, delayMs = 100): Promise<NonceLock>` — retries `acquireWithFallback`
   with linear backoff.
 * `reset(nonce?)`, `destroy()`, `.current`, `.remaining`, `.acquired` — state inspection/reset.
-
----
-
-## `RoomManager` (Server Utility)
-
-> **Added in issue #367 (module 33)** — performance-optimised WebSocket room manager used by `src/server.js`.
-
-```javascript
-const { RoomManager } = require('./src/room-manager');
-```
-
-### Constructor
-
-```javascript
-new RoomManager(options?)
-```
-
-| Option | Type | Default | Notes |
-|--------|------|---------|-------|
-| `maxRoomSize` | `number` | `Infinity` | Maximum number of simultaneous clients per room |
-
----
-
-### `join(clientId, roomId, ws) → { ok, reason? }`
-
-Add a client to a room.
-
-| Param | Type | Notes |
-|-------|------|-------|
-| `clientId` | `string` | Unique client identifier |
-| `roomId` | `string` | Target room |
-| `ws` | `object` | WebSocket-like object with a `send(data)` method |
-
-**Returns:**
-- `{ ok: true }` — client joined (or re-joined, updating the socket reference)
-- `{ ok: false, reason: 'ROOM_FULL' }` — room has reached `maxRoomSize`
-
-**Performance note:** Re-joining an existing client (same `clientId`) only updates the socket reference and never increments the room size.
-
----
-
-### `leave(clientId, roomId)`
-
-Remove a client from a specific room. Automatically deletes the room if it becomes empty,
-and removes the client's room-tracking entry if they are no longer in any room.
-
----
-
-### `disconnectClient(clientId)`
-
-Remove a client from **every** room it belongs to in a single sweep. More efficient than
-calling `leave()` per room when a connection drops.
-
-```javascript
-// On WebSocket close:
-ws.on('close', () => roomManager.disconnectClient(clientId));
-```
-
----
-
-### `broadcast(roomId, data)`
-
-Fan-out a message to every client currently in a room. Iterates the internal `Map`
-exactly once — callers do not need to fetch and loop the room themselves.
-
-```javascript
-roomManager.broadcast('lobby', JSON.stringify({ type: 'chat', text: 'hello' }));
-```
-
-| Param | Type | Notes |
-|-------|------|-------|
-| `roomId` | `string` | Target room (no-op if the room does not exist) |
-| `data` | `string \| Buffer` | Passed verbatim to each `ws.send()` |
-
----
-
-### `getRoomSize(roomId) → number`
-
-O(1) accessor returning the number of clients currently in a room. Returns `0` if the
-room does not exist.
-
-```javascript
-const size = roomManager.getRoomSize('lobby'); // e.g. 4
-```
-
----
-
-### `getClients(roomId) → Map<string, ws>`
-
-Return the live `Map<clientId, ws>` for a room. Returns an empty `Map` if the room does
-not exist — never returns `null` or `undefined`.
-
-```javascript
-for (const [clientId, ws] of roomManager.getClients('lobby')) {
-  ws.send(JSON.stringify({ type: 'roster', clientId }));
-}
-```
-
-> **Note:** The returned `Map` is a live reference to the internal data structure. Do not
-> mutate it directly — use `join()`, `leave()`, and `disconnectClient()` instead.
-
----
-
-### Error frame format
-
-When `handleJoin` (from `server.js`) rejects a join due to capacity, it sends the
-following JSON frame to the rejected client's socket before returning:
-
-```json
-{
-  "type": "error",
-  "payload": {
-    "message": "Room is full",
-    "code": "ROOM_FULL"
-  }
-}
-```
 
 ---
 
@@ -757,4 +729,31 @@ new Module48(config?: Module48Config)
 * `computeOptimizedYield(ratePerSecond: bigint, durationSecs: number): bigint` - Fast BigInt yield calculation.
 * `clearCache(): void` - Clears the internal lookup cache and metrics.
 * `getPerformanceMetrics(): Module48Metrics` - Returns `totalProcessed`, `cacheHits`, `cacheMisses`, `averageExecutionTimeMs`, and `measuredSpeedupPercent` (a real measurement derived from this instance's own accumulated hit/miss timings, `null` until both have occurred at least once — not a fixed assumed percentage).
+
+---
+
+## `Module49` (Feature #49)
+
+Streaming analytics and evaluation engine implementing Feature #49. Built with memoized cache algorithms and pre-allocated buffer iteration for fast stream batch evaluation.
+
+### Constructor
+
+```typescript
+new Module49(config?: Module49Config)
+```
+
+| Option | Type | Default | Notes |
+|--------|------|---------|-------|
+| `cacheSize` | `number` | `1000` | Max entries in memoization cache |
+| `enableOptimization` | `boolean` | `true` | Enables memoized lookup caching |
+| `batchChunkSize` | `number` | `50` | Stream chunk size for batch processing |
+
+### Methods
+
+* `processSingleItem(item: StreamBatchItem49): Module49Result` - Evaluates a stream's withdrawable balance and progress.
+* `processStreamBatch(items: StreamBatchItem49[]): Module49Result[]` - Processes batch array of streams in chunks.
+* `computeOptimizedYield(ratePerSecond: bigint, durationSecs: number): bigint` - Fast BigInt yield calculation.
+* `clearCache(): void` - Clears the internal lookup cache and metrics.
+* `getPerformanceMetrics(): Module49Metrics` - Returns real-time metrics (`totalProcessed`, `cacheHits`, `cacheMisses`, `hitRate`, `averageExecutionTimeMs`).
+
 

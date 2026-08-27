@@ -156,7 +156,14 @@ export class StreamBuilder {
       amount: this._amount,
     };
     if (this._ratePerSecond !== undefined && this._ratePerSecond !== null) {
-      config.ratePerSecond = this._ratePerSecond;
+      // build()'s return type promises `ratePerSecond?: string`, but
+      // bigintSafeStringify() only stringifies `bigint` values — a `number`
+      // input would otherwise pass through unchanged and lie about its type
+      // at runtime. Coerce numeric inputs here so the declared type is
+      // honest (see #459).
+      config.ratePerSecond = typeof this._ratePerSecond === 'number'
+        ? String(this._ratePerSecond)
+        : this._ratePerSecond;
     }
 
     return bigintSafeStringify(config) as {

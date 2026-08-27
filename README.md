@@ -262,6 +262,19 @@ const amount = await client.streams.withdrawable(streamId: bigint | string);
 
 ---
 
+#### `streamedTotal(streamId)`
+
+Get the cumulative amount streamed since the stream started, regardless of withdrawals. Read-only, no transaction.
+
+```typescript
+const total = await client.streams.streamedTotal(streamId: bigint | string);
+// Returns: bigint (cumulative stroops streamed since start)
+```
+
+Unlike `withdrawable()` (which reflects only the unwithdrawn portion), this value does not reset after a withdrawal — useful for progress displays that should keep counting up.
+
+---
+
 #### `withdraw(streamId, amount?)`
 
 Withdraw tokens as the recipient.
@@ -332,16 +345,44 @@ const txHash = await client.streams.clawback(streamId: bigint | string);
 
 ---
 
+#### `forceCancel(streamId)`
+
+Force-cancel a paused stream as the recipient after the 30-day pause threshold has elapsed.
+Settles atomically like `cancel()`; prevents a sender from indefinitely pausing a stream to
+hold unstreamed tokens hostage.
+
+```typescript
+const txHash = await client.streams.forceCancel(streamId: bigint | string);
+```
+
+---
+
+#### `transferRecipient(streamId, newRecipient)`
+
+Transfer the recipient role to a new address (current recipient only). The new recipient
+inherits all rights, including the withdrawable balance accrued so far.
+
+```typescript
+const txHash = await client.streams.transferRecipient(
+  streamId:     bigint | string,
+  newRecipient: string,
+);
+```
+
+---
+
 #### `list(params)`
 
-Query streams by sender or recipient.
+Query streams by sender and/or recipient. When **both** `sender` and `recipient` are given,
+the result is the de-duplicated **union** of the two filters (streams where the address is
+either sender or recipient).
 
 ```typescript
 const streams = await client.streams.list({
   sender?:    string,
   recipient?: string,
   offset?:    number,  // default: 0
-  limit?:     number,  // default: 20, max: 100
+  limit?:     number,  // default: 20, max: 100 (out-of-range values are clamped, not rejected)
 });
 // Returns: StreamInfo[]
 ```
@@ -567,7 +608,7 @@ sub.unsubscribe();
 
 Event subscriptions poll the Soroban event ledger every 5 seconds by default. Pass `{ pollInterval: 2000 }` to change the interval.
 
-**Caveat:** only `amount` is actually parsed today. `refundAmount`, `pausedAt`, `resumedAt`, `totalWithdrawn`, `remaining`, and `newBalance` are hardcoded `0`/`0n` placeholders in `src/events.ts` — the contracts emit these as tuples, and the event parser doesn't decode multi-value `ScVal`s yet. Treat an event as a "something happened, go refetch" signal, not a source of truth for those fields; use `client.streams.get(streamId)` to get the real numbers. See [`docs/api.md`](./docs/api.md) for detail.
+`src/events.ts` fully decodes each event's payload — multi-field events are parsed from their tuple `ScVal`s (`onWithdraw` → `amount`/`totalWithdrawn`/`remaining`, `onCancel` → `refundAmount`/`withdrawnSoFar`, `onPause` → `pausedAt`/`withdrawable`, `onTopUp` → `amount`/`newBalance`) and single-field events from their bare scalar (`onResume` → `resumedAt`, `onClawback` → `amount`). See [`docs/api.md`](./docs/api.md) for detail.
 
 ---
 
@@ -678,9 +719,15 @@ See [`CONTRIBUTING.md`](./CONTRIBUTING.md). For the module map and call flow, se
 
 ## Configuration
 
-The RoomManager limits can be configured via environment variables.
+The SDK can be configured via environment variables or explicit constructor options in `ConduitClient`. A template is provided in [`.env.example`](./.env.example).
 
-* `MAX_ROOM_SIZE`: Maximum number of clients allowed in a single room (default: Infinity).
+* `STELLAR_SECRET`: Stellar secret key for signing transactions (keep secure; server-side only).
+* `NEXT_PUBLIC_NETWORK` / `CONDUIT_NETWORK`: Stellar network selection (`testnet`, `mainnet`, or `local`).
+* `SOROBAN_RPC_URL` / `RPC_URL`: Optional custom Soroban RPC endpoint override.
+* `CONDUIT_FACTORY_ADDRESS`: Optional override for deployed DripFactory contract address.
+* `CONDUIT_GOVERNOR_ADDRESS`: Optional override for deployed DripGovernor contract address.
+* `CONDUIT_TOKEN_ADDRESS`: Optional default token contract address or `'native'`.
+* `STREAM_ID` / `ADDRESS`: Parameters for example scripts and CLI integration.
 
 ---
 

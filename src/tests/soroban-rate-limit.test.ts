@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { RateLimitError } from '../errors.js';
+import { RateLimitError, RpcServiceUnavailableError } from '../errors.js';
 
 const {
   mockSimulateTransaction,
@@ -68,6 +68,20 @@ describe('soroban.ts rate limit handling', () => {
     await vi.advanceTimersByTimeAsync(1000 * 3);
 
     await expect(promise).rejects.toBeInstanceOf(RateLimitError);
+  });
+
+  it('surfaces a 503 as RpcServiceUnavailableError without retrying the same endpoint', async () => {
+    // Regression test for #456: a 503 means the node is down, so the retry
+    // proxy must not backoff-and-retry it like a 429 — it fails fast with a
+    // distinguishable error so callers can fail over to another RPC URL.
+    mockSimulateTransaction.mockRejectedValue({
+      response: { status: 503, headers: {} },
+    });
+
+    await expect(
+      simulateReadOnly('http://localhost:8000', 'passphrase', {} as any)
+    ).rejects.toBeInstanceOf(RpcServiceUnavailableError);
+    expect(mockSimulateTransaction).toHaveBeenCalledTimes(1);
   });
 
   it('still throws the original error for non-rate-limit failures', async () => {

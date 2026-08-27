@@ -15,6 +15,9 @@ function pow10(decimals: number): bigint {
 
 /** Convert a display amount string to stroops (bigint) */
 export function toStroops(amount: string, decimals = 7): bigint {
+  if (!/^\d*(\.\d*)?$/.test(amount) || amount === '.' || amount === '') {
+    throw new Error(`Invalid amount format: "${amount}"`);
+  }
   const dotIndex = amount.indexOf('.');
   const whole = dotIndex === -1 ? amount : amount.slice(0, dotIndex);
   const frac = dotIndex === -1 ? '' : amount.slice(dotIndex + 1);

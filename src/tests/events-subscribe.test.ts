@@ -62,21 +62,46 @@ describe('subscribeToStream', () => {
     sub.unsubscribe();
   });
 
-  it('advances startLedger past the highest event ledger seen, and polls again after the interval', async () => {
-    mockGetEvents
-      .mockResolvedValueOnce({ events: [{ ledger: 100, topic: [], value: xdr.ScVal.scvVoid() }] })
-      .mockResolvedValueOnce({ events: [] });
+  it('uses the RPC cursor to continue polling when a ledger spans multiple pages', async () => {
+    const { Address, Keypair } = await import('@stellar/stellar-sdk');
+    const sender = Keypair.random().publicKey();
+    const makeEvent = () => ({
+      ledger: 100,
+      topic: [xdr.ScVal.scvSymbol('clawback'), new Address(sender).toScVal()],
+      value: xdr.ScVal.scvI128(
+        new xdr.Int128Parts({ hi: xdr.Int64.fromString('0'), lo: xdr.Uint64.fromString('5000') }),
+      ),
+    });
+
+    mockGetEvents.mockImplementation((params?: { cursor?: string }) => {
+      if (params?.cursor === 'page-2') {
+        return Promise.resolve({ events: [makeEvent()], latestLedger: 100 });
+      }
+
+      return Promise.resolve({
+        events: Array.from({ length: 101 }, () => makeEvent()),
+        cursor: 'page-2',
+        latestLedger: 100,
+      });
+    });
     const { subscribeToStream } = await import('../events.js');
 
-    const sub = subscribeToStream('http://localhost:8000', 'CSTREAM', { pollInterval: 1000 });
+    const received: unknown[] = [];
+    const sub = subscribeToStream('http://localhost:8000', 'CSTREAM', {
+      pollInterval: 1000,
+      onClawback: (event) => { received.push(event); },
+    });
     await vi.waitFor(() => expect(mockGetEvents).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(received).toHaveLength(101));
 
     await vi.advanceTimersByTimeAsync(1000);
     await vi.waitFor(() => expect(mockGetEvents).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(received).toHaveLength(102));
 
     expect(mockGetEvents.mock.calls[1]?.[0]).toEqual(
-      expect.objectContaining({ startLedger: 101 }),
+      expect.objectContaining({ cursor: 'page-2' }),
     );
+    expect(mockGetEvents.mock.calls[1]?.[0]).not.toHaveProperty('startLedger');
     sub.unsubscribe();
   });
 
@@ -114,6 +139,58 @@ describe('subscribeToStream', () => {
     // between the mock rejecting and poll()'s own catch/console.warn running,
     // so wait for it rather than asserting immediately.
     await vi.waitFor(() => expect(warn).toHaveBeenCalled());
+
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.waitFor(() => expect(mockGetEvents).toHaveBeenCalledTimes(2));
+
+    sub.unsubscribe();
+    warn.mockRestore();
+  });
+
+  it('surfaces polling errors through onError', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const pollingError = new Error('rpc unavailable');
+    const onError = vi.fn();
+    mockGetEvents.mockRejectedValueOnce(pollingError).mockResolvedValue({ events: [] });
+    const { subscribeToStream } = await import('../events.js');
+
+    const sub = subscribeToStream('http://localhost:8000', 'CSTREAM', {
+      onError,
+      pollInterval: 1000,
+    });
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledWith(pollingError));
+
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.waitFor(() => expect(mockGetEvents).toHaveBeenCalledTimes(2));
+
+    sub.unsubscribe();
+    warn.mockRestore();
+  });
+
+  it('normalizes non-Error polling failures before calling onError', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const onError = vi.fn();
+    mockGetEvents.mockRejectedValueOnce('rpc unavailable');
+    const { subscribeToStream } = await import('../events.js');
+
+    const sub = subscribeToStream('http://localhost:8000', 'CSTREAM', { onError });
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledTimes(1));
+
+    expect(onError.mock.calls[0]?.[0]).toEqual(new Error('rpc unavailable'));
+    sub.unsubscribe();
+    warn.mockRestore();
+  });
+
+  it('keeps polling when onError itself throws', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    mockGetEvents.mockRejectedValueOnce(new Error('rpc unavailable')).mockResolvedValue({ events: [] });
+    const { subscribeToStream } = await import('../events.js');
+
+    const sub = subscribeToStream('http://localhost:8000', 'CSTREAM', {
+      onError: () => { throw new Error('consumer handler failed'); },
+      pollInterval: 1000,
+    });
+    await vi.waitFor(() => expect(warn).toHaveBeenCalledTimes(2));
 
     await vi.advanceTimersByTimeAsync(1000);
     await vi.waitFor(() => expect(mockGetEvents).toHaveBeenCalledTimes(2));

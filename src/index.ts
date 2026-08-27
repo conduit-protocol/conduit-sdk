@@ -27,6 +27,7 @@ export {
   StreamFiNetworkError,
   InsufficientBalanceError,
   RateLimitError,
+  RpcServiceUnavailableError,
   SUPPORTED_NETWORKS,
   UNKNOWN_CONTRACT_ERROR_CODE,
 } from './errors.js';
@@ -83,4 +84,12 @@ export type {
   Module48Result,
   Module48Metrics,
 } from './module48.js';
-// feat: add fixes
+
+export { Module49 } from './module49.js';
+export type {
+  Module49Config,
+  StreamBatchItem49,
+  Module49Result,
+  Module49Metrics,
+} from './module49.js';
+
