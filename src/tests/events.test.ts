@@ -23,6 +23,10 @@ function actorTopic(): xdr.ScVal {
   return new Address(actorAddress).toScVal();
 }
 
+function sequenceTopic(seq: bigint | number): xdr.ScVal {
+  return nativeToScVal(BigInt(seq), { type: 'u64' });
+}
+
 function i128(val: bigint): xdr.ScVal {
   return nativeToScVal(val, { type: 'i128' });
 }
@@ -35,9 +39,13 @@ function tuple(...fields: xdr.ScVal[]): xdr.ScVal {
   return xdr.ScVal.scvVec(fields);
 }
 
-function makeEvent(topicName: string, value: xdr.ScVal): Parameters<typeof dispatchEvent>[0] {
+function makeEvent(
+  topicName: string,
+  value:     xdr.ScVal,
+  seq:       bigint | number = 0,
+): Parameters<typeof dispatchEvent>[0] {
   return {
-    topic: [topic(topicName), actorTopic()],
+    topic: [topic(topicName), actorTopic(), sequenceTopic(seq)],
     value,
   } as Parameters<typeof dispatchEvent>[0];
 }
@@ -57,6 +65,7 @@ describe('dispatchEvent — withdrawn', () => {
       amount:         10_000n,
       totalWithdrawn: 25_000n,
       remaining:      75_000n,
+      sequence:       0n,
     });
   });
 });
@@ -75,6 +84,7 @@ describe('dispatchEvent — cancelled', () => {
       sender:         actorAddress,
       refundAmount:   180_000n,
       withdrawnSoFar: 60_000n,
+      sequence:       0n,
     });
   });
 });
@@ -93,6 +103,7 @@ describe('dispatchEvent — paused', () => {
       sender:       actorAddress,
       pausedAt:     1_700_000_000,
       withdrawable: 5_000n,
+      sequence:     0n,
     });
   });
 });
@@ -107,7 +118,7 @@ describe('dispatchEvent — resumed', () => {
 
     dispatchEvent(event, handlers);
 
-    expect(received).toEqual({ sender: actorAddress, resumedAt: 1_700_003_600 });
+    expect(received).toEqual({ sender: actorAddress, resumedAt: 1_700_003_600, sequence: 0n });
   });
 });
 
@@ -121,7 +132,7 @@ describe('dispatchEvent — topped_up', () => {
 
     dispatchEvent(event, handlers);
 
-    expect(received).toEqual({ sender: actorAddress, amount: 50_000n, newBalance: 150_000n });
+    expect(received).toEqual({ sender: actorAddress, amount: 50_000n, newBalance: 150_000n, sequence: 0n });
   });
 });
 
@@ -135,11 +146,29 @@ describe('dispatchEvent — clawback', () => {
 
     dispatchEvent(event, handlers);
 
-    expect(received).toEqual({ sender: actorAddress, amount: 300_000n });
+    expect(received).toEqual({ sender: actorAddress, amount: 300_000n, sequence: 0n });
   });
 });
 
 // ── Robustness ─────────────────────────────────────────────────────────────
+
+describe('dispatchEvent — sequence (topics[2])', () => {
+  it('parses topics[2] as the event sequence and returns it', () => {
+    const event = makeEvent('clawback', i128(1n), 42n);
+    let received: ClawbackEvent | undefined;
+    const handlers: StreamEventHandlers = { onClawback: (e) => { received = e; } };
+
+    const returned = dispatchEvent(event, handlers);
+
+    expect(received?.sequence).toBe(42n);
+    expect(returned).toBe(42n);
+  });
+
+  it('returns undefined when there are no topics at all', () => {
+    const event = { topic: [], value: i128(1n) } as unknown as Parameters<typeof dispatchEvent>[0];
+    expect(dispatchEvent(event, {})).toBeUndefined();
+  });
+});
 
 describe('dispatchEvent — edge cases', () => {
   it('does not throw for an unrecognized topic', () => {

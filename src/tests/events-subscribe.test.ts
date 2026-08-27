@@ -124,7 +124,36 @@ describe('subscribeToStream', () => {
       onClawback: (e) => { received = e; },
     });
     await vi.waitFor(() => expect(received).toBeDefined());
-    expect(received).toEqual({ sender, amount: 5_000n });
+    expect(received).toEqual({ sender, amount: 5_000n, sequence: 0n });
+    sub.unsubscribe();
+  });
+
+  it('fires onGap when two dispatched events have a non-contiguous sequence (#505)', async () => {
+    const { Address, Keypair, nativeToScVal } = await import('@stellar/stellar-sdk');
+    const sender = Keypair.random().publicKey();
+    const clawbackAt = (seq: number) => ({
+      ledger: 1,
+      topic: [
+        xdr.ScVal.scvSymbol('clawback'),
+        new Address(sender).toScVal(),
+        nativeToScVal(BigInt(seq), { type: 'u64' }),
+      ],
+      value: xdr.ScVal.scvI128(
+        new xdr.Int128Parts({ hi: xdr.Int64.fromString('0'), lo: xdr.Uint64.fromString('1') }),
+      ),
+    });
+    mockGetEvents.mockResolvedValueOnce({
+      events: [clawbackAt(1), clawbackAt(2), clawbackAt(5)],
+    });
+    const { subscribeToStream } = await import('../events.js');
+
+    const gaps: Array<{ expected: bigint; actual: bigint }> = [];
+    const sub = subscribeToStream('http://localhost:8000', 'CSTREAM', {
+      onClawback: () => {},
+      onGap: (gap) => { gaps.push(gap); },
+    });
+    await vi.waitFor(() => expect(gaps).toHaveLength(1));
+    expect(gaps[0]).toEqual({ expected: 3n, actual: 5n });
     sub.unsubscribe();
   });
 
