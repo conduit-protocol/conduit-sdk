@@ -6,9 +6,12 @@ Scaffold a Next.js app ready to use StreamFi on Stellar testnet.
 npx create-streamfi-app my-streamfi-app
 ```
 
-The command clones a Next.js template, installs the template's dependencies and `@conduit-protocol/sdk`, then creates `.env.local` with the Stellar testnet Soroban RPC and Horizon URLs.
+The command copies a bundled, StreamFi-wired Next.js template (the app that lists, creates, and withdraws from
+streams via `@conduit-protocol/sdk` — see [`examples/nextjs-app`](../examples/nextjs-app)), installs its
+dependencies, then creates `.env.local` with `NEXT_PUBLIC_NETWORK=testnet` plus blank placeholders for
+`FACTORY_ADDRESS`, `STELLAR_SECRET`, and `NEXT_PUBLIC_ADDRESS` for you to fill in.
 
-To use a fork or an unreleased template repository:
+To use a different starter instead of the bundled template:
 
 ```bash
 npx create-streamfi-app my-streamfi-app --template https://github.com/your-org/your-template.git
