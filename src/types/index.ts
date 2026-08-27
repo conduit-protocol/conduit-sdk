@@ -118,12 +118,12 @@ export interface GovernorConfig {
 
 // ── Events ──────────────────────────────────────────────────────────────────
 
-export interface WithdrawEvent  { amount: bigint; recipient: string; totalWithdrawn: bigint; remaining: bigint; }
-export interface CancelEvent    { refundAmount: bigint; withdrawnSoFar: bigint; sender: string; }
-export interface PauseEvent     { pausedAt: number; withdrawable: bigint; sender: string; }
-export interface ResumeEvent    { resumedAt: number; sender: string; }
-export interface TopUpEvent     { amount: bigint; newBalance: bigint; sender: string; }
-export interface ClawbackEvent  { amount: bigint; sender: string; }
+export interface WithdrawEvent  { amount: bigint | undefined; recipient: string; totalWithdrawn: bigint | undefined; remaining: bigint | undefined; }
+export interface CancelEvent    { refundAmount: bigint | undefined; withdrawnSoFar: bigint | undefined; sender: string; }
+export interface PauseEvent     { pausedAt: number | undefined; withdrawable: bigint | undefined; sender: string; }
+export interface ResumeEvent    { resumedAt: number | undefined; sender: string; }
+export interface TopUpEvent     { amount: bigint | undefined; newBalance: bigint | undefined; sender: string; }
+export interface ClawbackEvent  { amount: bigint | undefined; sender: string; }
 
 export interface StreamEventHandlers {
   onWithdraw?: (e: WithdrawEvent)  => void;
