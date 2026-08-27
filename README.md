@@ -382,7 +382,7 @@ const streams = await client.streams.list({
   sender?:    string,
   recipient?: string,
   offset?:    number,  // default: 0
-  limit?:     number,  // default: 20, max: 100
+  limit?:     number,  // default: 20, max: 100 (out-of-range values are clamped, not rejected)
 });
 // Returns: StreamInfo[]
 ```

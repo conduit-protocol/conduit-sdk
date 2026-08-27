@@ -69,7 +69,7 @@ function warnV1Deprecated(methodName: string, replacement: string): void {
     `major version. Use ${replacement} instead.`,
   );
 }
-import { ZERO_ADDR } from './constants.js';
+import { ZERO_ADDR, DEFAULT_LIST_LIMIT, clampListLimit } from './constants.js';
 
 export class StreamsModule {
   private readonly rpcUrl:     string;
@@ -558,7 +558,12 @@ export class StreamsModule {
    * frontend can implement infinite scrolling.
    */
   async list(params: ListStreamsParams): Promise<PaginatedStreams> {
-    const { sender, recipient, limit = 20 } = params;
+    const { sender, recipient } = params;
+    // Clamp here (not just in FactoryModule) so hasNextPage/nextCursor math
+    // below stays consistent with the limit actually sent to the contract —
+    // otherwise a caller-supplied limit above the max would silently break
+    // pagination even though the contract call itself was clamped (see #489).
+    const limit = clampListLimit(params.limit ?? DEFAULT_LIST_LIMIT);
     let offset = params.offset ?? 0;
 
     // A cursor from a previous page's nextCursor takes precedence over a

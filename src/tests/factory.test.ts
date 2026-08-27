@@ -17,6 +17,12 @@ vi.mock('../soroban.js', () => ({
   scValToU64: (v: { u64: () => { toString: () => string } }) =>
     BigInt(v.u64().toString()),
   scValToI128: (_v: unknown) => 0n,
+  scValToU32: (v: { switch: () => { name: string }; u32: () => number }) => {
+    if (v.switch().name !== 'scvU32') {
+      throw new Error(`Expected a u32 ScVal, got "${v.switch().name}" instead.`);
+    }
+    return v.u32();
+  },
   NETWORK_PASSPHRASE: {
     testnet:  'Test SDF Network ; September 2015',
     mainnet:  'Public Global Stellar Network ; September 2015',
@@ -181,6 +187,15 @@ describe('FactoryModule — protocolFeeBps()', () => {
     const fee = await new FactoryModule(cfg()).protocolFeeBps();
     expect(fee).toBe(0);
   });
+
+  it('throws a clear typed error instead of a bare XDR error when the response is not a u32', async () => {
+    const { FactoryModule } = await import('../factory.js');
+    mockSimulate.mockResolvedValueOnce(makeU64ScVal(30n));
+
+    await expect(new FactoryModule(cfg()).protocolFeeBps()).rejects.toThrow(
+      /Expected a u32 ScVal, got "scvU64"/,
+    );
+  });
 });
 
 describe('FactoryModule — streamsBySender() / streamsByRecipient()', () => {
@@ -214,5 +229,35 @@ describe('FactoryModule — streamsBySender() / streamsByRecipient()', () => {
 
     const ids = await new FactoryModule(cfg()).streamsByRecipient(RECIPIENT_ADDR);
     expect(ids).toEqual([3n]);
+  });
+
+  it('clamps a limit above 100 to 100 before it reaches the contract call', async () => {
+    const { FactoryModule } = await import('../factory.js');
+    mockSimulate.mockResolvedValueOnce(_xdr.ScVal.scvVec([]));
+
+    await new FactoryModule(cfg()).streamsBySender(SENDER_ADDR, 0, 100_000);
+
+    const args = mockBuildTx.mock.calls.at(-1)![5] as _xdr.ScVal[];
+    expect(args[2]!.u32()).toBe(100);
+  });
+
+  it('clamps a negative limit to 0 rather than passing it through to a u32 conversion', async () => {
+    const { FactoryModule } = await import('../factory.js');
+    mockSimulate.mockResolvedValueOnce(_xdr.ScVal.scvVec([]));
+
+    await new FactoryModule(cfg()).streamsByRecipient(RECIPIENT_ADDR, 0, -5);
+
+    const args = mockBuildTx.mock.calls.at(-1)![5] as _xdr.ScVal[];
+    expect(args[2]!.u32()).toBe(0);
+  });
+
+  it('leaves an in-range limit untouched', async () => {
+    const { FactoryModule } = await import('../factory.js');
+    mockSimulate.mockResolvedValueOnce(_xdr.ScVal.scvVec([]));
+
+    await new FactoryModule(cfg()).streamsBySender(SENDER_ADDR, 0, 50);
+
+    const args = mockBuildTx.mock.calls.at(-1)![5] as _xdr.ScVal[];
+    expect(args[2]!.u32()).toBe(50);
   });
 });
