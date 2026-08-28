@@ -4,11 +4,12 @@
 
 import { nativeToScVal, xdr, Address } from '@stellar/stellar-sdk';
 import type { ConduitConfig } from './types/index.js';
-import { ZERO_ADDR } from './constants.js';
+import { ZERO_ADDR, DEFAULT_LIST_LIMIT, clampListLimit } from './constants.js';
 import {
   buildContractCallTx,
   simulateReadOnly,
   scValToU64,
+  scValToU32,
   NETWORK_PASSPHRASE,
   DEFAULT_RPC,
 } from './soroban.js';
@@ -87,30 +88,40 @@ export class FactoryModule {
     }
   }
 
-  /** List stream IDs where `address` is the sender, paginated. */
-  async streamsBySender(address: string, offset = 0, limit = 20): Promise<bigint[]> {
+  /**
+   * List stream IDs where `address` is the sender, paginated.
+   * `limit` is clamped to `[0, 100]` (see README) — the contract does not
+   * enforce this itself, so an out-of-range value is silently clamped rather
+   * than sent through as-is (see #489).
+   */
+  async streamsBySender(address: string, offset = 0, limit = DEFAULT_LIST_LIMIT): Promise<bigint[]> {
     const tx  = await buildContractCallTx(
       this.rpcUrl, this.passphrase, this.callerAddr,
       this.factoryId, 'streams_by_sender',
       [
         new Address(address).toScVal(),
         nativeToScVal(offset, { type: 'u32' }),
-        nativeToScVal(limit,  { type: 'u32' }),
+        nativeToScVal(clampListLimit(limit), { type: 'u32' }),
       ],
     );
     const val = await simulateReadOnly(this.rpcUrl, this.passphrase, tx);
     return this.parseU64Vec(val);
   }
 
-  /** List stream IDs where `address` is the recipient, paginated. */
-  async streamsByRecipient(address: string, offset = 0, limit = 20): Promise<bigint[]> {
+  /**
+   * List stream IDs where `address` is the recipient, paginated.
+   * `limit` is clamped to `[0, 100]` (see README) — the contract does not
+   * enforce this itself, so an out-of-range value is silently clamped rather
+   * than sent through as-is (see #489).
+   */
+  async streamsByRecipient(address: string, offset = 0, limit = DEFAULT_LIST_LIMIT): Promise<bigint[]> {
     const tx  = await buildContractCallTx(
       this.rpcUrl, this.passphrase, this.callerAddr,
       this.factoryId, 'streams_by_recipient',
       [
         new Address(address).toScVal(),
         nativeToScVal(offset, { type: 'u32' }),
-        nativeToScVal(limit,  { type: 'u32' }),
+        nativeToScVal(clampListLimit(limit), { type: 'u32' }),
       ],
     );
     const val = await simulateReadOnly(this.rpcUrl, this.passphrase, tx);
@@ -124,7 +135,7 @@ export class FactoryModule {
       this.factoryId, 'protocol_fee_bps', [],
     );
     const val = await simulateReadOnly(this.rpcUrl, this.passphrase, tx);
-    return Number(val.u32());
+    return scValToU32(val);
   }
 
   private parseU64Vec(val: xdr.ScVal): bigint[] {

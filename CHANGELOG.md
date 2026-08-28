@@ -21,6 +21,7 @@ All notable changes are documented here. Format based on [Keep a Changelog](http
 ### Removed
 - Removed orphaned `RoomManager` (`src/room-manager.js`) and `src/server.js` WebSocket server, along with unused `dotenv` production dependency (#442).
 - Removed unused `GraphSyncAgent` (`src/graph-sync-agent.ts`) dead code (#443).
+- Removed dead `Module46` string-normalization wrapper (`src/module46.ts`) — never exported from `src/index.ts` and unreferenced elsewhere (#478).
 
 ### Documentation
 - Removed non-existent `contracts/*-abi.ts` entry from `docs/architecture.md` module map (#440).
@@ -31,6 +32,9 @@ All notable changes are documented here. Format based on [Keep a Changelog](http
 - Documented `ConduitClient`'s `pauseStream()`, `unpauseStream()`, and `setWallet()` convenience methods in `docs/api.md`, and fixed `setWallet()`'s JSDoc block, which had been orphaned above `pauseStream()`/`unpauseStream()` and left `setWallet()` itself undocumented.
 
 ### Fixed
+- `Module26`, `Module36`, `Module48`, and `Module49` now share a single `LruMemoCache` helper (`src/lru-memo-cache.ts`) for eviction (and, for the first three, hit/miss speedup measurement) instead of each re-implementing the same LRU-memoizer logic (#479).
+- `Module26.aggregatePortfolio()` now fingerprints the portfolio with two incremental hashes (FNV-1a + djb2) instead of building a full `items.map(...).join('|')` string on every call, including cache hits — for a large portfolio that string could run to many KB and dominated the "cached" path, so `measuredSpeedupPercent` mostly measured string building rather than the aggregation it memoizes. Two independent hashes are combined into the key rather than one, since a single 32-bit hash would make wrong-portfolio cache collisions realistic at long-running-instance scale (#480).
+- `Module48.processSingleItem()` now updates `totalProcessed` and the execution-time accumulator on every call, so `getPerformanceMetrics().averageExecutionTimeMs` is accurate whether streams are processed via `processStreamBatch()` or by calling `processSingleItem()` directly; previously only `processStreamBatch()` touched `totalProcessed`, so direct `processSingleItem()` calls always reported `averageExecutionTimeMs: 0` (#481).
 - **Breaking:** `RateLimitError.fromRpcError()` no longer conflates HTTP 503 (Service Unavailable) with 429 (Too Many Requests). A 503 is now reported as a distinct exported `RpcServiceUnavailableError`, and the internal RPC retry wrapper only backoff-retries genuine `RateLimitError`s — a 503 fails fast so consumers can fail over to a different RPC URL instead of retrying a dead endpoint (#456).
 - `catchNetworkError()` no longer reclassifies *any* `TypeError` whose text happens to contain `fetch`/`connect`/`network`/etc. It now only reclassifies errors that are provably transport failures: the canonical fetch/axios network messages (`fetch failed`, `Failed to fetch`, `Network Error`, `Load failed`) or an error (or its nested `cause`) carrying a network errno code such as `ECONNREFUSED`/`ENOTFOUND`/`ERR_NETWORK`. A programming `TypeError` (e.g. `Cannot read properties of undefined (reading 'connect')`) is re-thrown as-is instead of being masked as a network outage (#457).
 - `NonceManager` now throws a descriptive error for an unparseable nonce string (e.g. `startNonce: 'not-a-number'`) instead of silently coercing it to `0n`, which masked caller bugs as an explicit zero (#458).

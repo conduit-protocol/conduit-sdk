@@ -322,7 +322,7 @@ describe('StreamsModule — list()', () => {
     expect(mockStreamCount).not.toHaveBeenCalled();
   });
 
-  it('queries both sender and recipient filters when both are given', async () => {
+  it('queries both sender and recipient filters when both are given, merging from offset 0 (#507)', async () => {
     mockStreamsBySender.mockResolvedValue([]);
     mockStreamsByRecipient.mockResolvedValue([]);
     const { StreamsModule } = await import('../streams.js');
@@ -333,11 +333,14 @@ describe('StreamsModule — list()', () => {
       offset: 5,
       limit: 10,
     });
+    // Both sub-indices are fetched from offset 0 through offset+limit so
+    // they can be merged into one honest, ordered window before slicing
+    // out this page — see #507.
     expect(mockStreamsBySender).toHaveBeenCalledWith(
-      'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN', 5, 10,
+      'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN', 0, 16,
     );
     expect(mockStreamsByRecipient).toHaveBeenCalledWith(
-      'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5', 5, 10,
+      'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5', 0, 16,
     );
   });
 
@@ -356,6 +359,27 @@ describe('StreamsModule — list()', () => {
     });
     // Stream 2 appears in both pages and must not be duplicated.
     expect(result.streams.map(s => s.id)).toEqual([1n, 2n, 3n]);
+    expect(result.hasNextPage).toBe(false);
+  });
+
+  it('caps the union page at `limit` and reports hasNextPage honestly (#507)', async () => {
+    // 5 sender streams + 5 disjoint recipient streams = 10 total, but the
+    // caller only asked for a page of 3.
+    mockStreamsBySender.mockResolvedValue([1n, 2n, 3n, 4n, 5n]);
+    mockStreamsByRecipient.mockResolvedValue([6n, 7n, 8n, 9n, 10n]);
+    mockStreamAddress.mockResolvedValue('CCWAMYJME27OHTPKVSV252YRPXEO4BSKBHVLQ7ML3OWYNMB5RQEVHSM');
+    mockSimulate.mockResolvedValue({ result: { retval: xdr.ScVal.scvMap([]) } });
+    const { StreamsModule } = await import('../streams.js');
+    const sdk = new StreamsModule(makeConfig(false));
+    const result = await sdk.list({
+      sender:    'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN',
+      recipient: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
+      offset: 0,
+      limit: 3,
+    });
+    expect(result.streams).toHaveLength(3);
+    expect(result.streams.map(s => s.id)).toEqual([1n, 2n, 3n]);
+    expect(result.hasNextPage).toBe(true);
   });
 });
 

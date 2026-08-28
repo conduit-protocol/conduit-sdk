@@ -1,5 +1,6 @@
 import type { StreamInfo } from './types/index.js';
 import { withdrawableLocal } from './utils.js';
+import { LruMemoCache } from './lru-memo-cache.js';
 
 export interface Module49Config {
   /** Maximum number of calculated results to keep in the fast lookup cache */
@@ -38,18 +39,17 @@ export interface Module49Metrics {
  * Implements Feature #49 with memoized calculation algorithms for batch stream evaluation.
  */
 export class Module49 {
-  private readonly cacheSize: number;
   private readonly enableOptimization: boolean;
   private readonly batchChunkSize: number;
 
-  private cache = new Map<string, { withdrawable: bigint; progress: number; computedAt: number }>();
+  private readonly cache: LruMemoCache<string, { withdrawable: bigint; progress: number; computedAt: number }>;
   private totalProcessed = 0;
   private cacheHits = 0;
   private cacheMisses = 0;
   private totalExecutionTimeMs = 0;
 
   constructor(config: Module49Config = {}) {
-    this.cacheSize = config.cacheSize ?? 1000;
+    this.cache = new LruMemoCache(config.cacheSize ?? 1000);
     this.enableOptimization = config.enableOptimization ?? true;
     this.batchChunkSize = config.batchChunkSize ?? 50;
   }
@@ -85,16 +85,18 @@ export class Module49 {
     const nowSec = item.timestamp ?? Math.floor(Date.now() / 1000);
     const cacheKey = `${item.id}_${item.stream.withdrawn.toString()}_${item.stream.paused ? 1 : 0}_${nowSec}`;
 
-    if (this.enableOptimization && this.cache.has(cacheKey)) {
-      this.cacheHits++;
-      const cached = this.cache.get(cacheKey)!;
-      return {
-        id: item.id,
-        withdrawable: cached.withdrawable,
-        progress: cached.progress,
-        isCached: true,
-        computedAt: cached.computedAt,
-      };
+    if (this.enableOptimization) {
+      const cached = this.cache.get(cacheKey);
+      if (cached) {
+        this.cacheHits++;
+        return {
+          id: item.id,
+          withdrawable: cached.withdrawable,
+          progress: cached.progress,
+          isCached: true,
+          computedAt: cached.computedAt,
+        };
+      }
     }
 
     this.cacheMisses++;
@@ -115,12 +117,6 @@ export class Module49 {
     const computedAt = nowSec;
 
     if (this.enableOptimization) {
-      if (this.cache.size >= this.cacheSize) {
-        const firstKey = this.cache.keys().next().value;
-        if (firstKey !== undefined) {
-          this.cache.delete(firstKey);
-        }
-      }
       this.cache.set(cacheKey, { withdrawable, progress, computedAt });
     }
 

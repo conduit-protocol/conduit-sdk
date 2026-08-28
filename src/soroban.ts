@@ -336,6 +336,20 @@ export function scValToU64(val: xdr.ScVal): bigint {
   return BigInt(val.u64().toString());
 }
 
+/**
+ * Convert an ScVal u32 to number, checking the ScVal's shape first. A raw
+ * `val.u32()` call throws an opaque XDR error ("bad union switch" etc.) when
+ * the contract returns a different numeric width than expected; this surfaces
+ * a clear, typed error instead so callers don't have to decode an XDR
+ * exception to find out their assumption about the response shape was wrong.
+ */
+export function scValToU32(val: xdr.ScVal): number {
+  if (val.switch().name !== 'scvU32') {
+    throw new Error(`Expected a u32 ScVal, got "${val.switch().name}" instead.`);
+  }
+  return val.u32();
+}
+
 /** Encode a u64 value as ScVal */
 export function u64ToScVal(val: bigint | number): xdr.ScVal {
   return xdr.ScVal.scvU64(xdr.Uint64.fromString(val.toString()));

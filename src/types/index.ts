@@ -118,12 +118,20 @@ export interface GovernorConfig {
 
 // ── Events ──────────────────────────────────────────────────────────────────
 
-export interface WithdrawEvent  { amount: bigint | undefined; recipient: string; totalWithdrawn: bigint | undefined; remaining: bigint | undefined; }
-export interface CancelEvent    { refundAmount: bigint | undefined; withdrawnSoFar: bigint | undefined; sender: string; }
-export interface PauseEvent     { pausedAt: number | undefined; withdrawable: bigint | undefined; sender: string; }
-export interface ResumeEvent    { resumedAt: number | undefined; sender: string; }
-export interface TopUpEvent     { amount: bigint | undefined; newBalance: bigint | undefined; sender: string; }
-export interface ClawbackEvent  { amount: bigint | undefined; sender: string; }
+export interface WithdrawEvent  { amount: bigint; recipient: string; totalWithdrawn: bigint; remaining: bigint; sequence: bigint; }
+export interface CancelEvent    { refundAmount: bigint; withdrawnSoFar: bigint; sender: string; sequence: bigint; }
+export interface PauseEvent     { pausedAt: number; withdrawable: bigint; sender: string; sequence: bigint; }
+export interface ResumeEvent    { resumedAt: number; sender: string; sequence: bigint; }
+export interface TopUpEvent     { amount: bigint; newBalance: bigint; sender: string; sequence: bigint; }
+export interface ClawbackEvent  { amount: bigint; sender: string; sequence: bigint; }
+
+/** A gap detected in the per-contract event sequence — see `DataKey::EventSequence` in contracts/stream/src/events.rs. */
+export interface EventGap {
+  /** The sequence number that should have come next. */
+  expected: bigint;
+  /** The sequence number actually observed. */
+  actual: bigint;
+}
 
 export interface StreamEventHandlers {
   onWithdraw?: (e: WithdrawEvent)  => void;
@@ -134,6 +142,8 @@ export interface StreamEventHandlers {
   onClawback?: (e: ClawbackEvent)  => void;
   /** Called when an event polling request fails. Polling continues afterward. */
   onError?:    (error: Error)      => void;
+  /** Called when a non-contiguous event sequence is observed (missed events across a poll gap or reconnect). */
+  onGap?:      (gap: EventGap)     => void;
   /** Polling interval in ms; default 5000 */
   pollInterval?: number;
 }
