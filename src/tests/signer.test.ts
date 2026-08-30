@@ -125,6 +125,28 @@ describe('_signTx — Signer with async/sync sign()', () => {
     await expect(runSignTx(sdk, {} as Transaction)).resolves.toBeDefined();
     expect(signed).toBe(true);
   });
+
+  it('uses the Transaction a Signer returns (immutable-style sign)', async () => {
+    const original = { _tag: 'original' } as unknown as Transaction;
+    const newlySigned = Object.assign(
+      Object.create((await import('@stellar/stellar-sdk')).Transaction.prototype),
+      { _tag: 'signed' },
+    ) as Transaction;
+    const immutableSigner: Signer = {
+      sign: (_tx: Transaction) => newlySigned,
+      publicKey: () => 'GAAZI...',
+    };
+    const { StreamsModule } = await import('../streams.js');
+    const sdk = new StreamsModule({
+      network: 'testnet',
+      factoryAddress: 'CCWAMYJ...',
+      signer: immutableSigner,
+    });
+
+    const result = await runSignTx(sdk, original);
+    expect(result).toBe(newlySigned);
+    expect(result).not.toBe(original);
+  });
 });
 
 // ── Tests: _resolveCallerAddress ──────────────────────────────────────────────

@@ -3,7 +3,6 @@
  */
 
 import { SorobanRpc, nativeToScVal, xdr, Address, Transaction, BASE_FEE, Asset } from '@stellar/stellar-sdk';
-import type { Signer } from './signer.js';
 import type {
   ConduitConfig,
   CreateStreamParams,
@@ -80,7 +79,6 @@ import { ZERO_ADDR, DEFAULT_LIST_LIMIT, clampListLimit, USDC_ISSUER } from './co
 export class StreamsModule {
   private readonly rpcUrl:     string;
   private readonly passphrase: string;
-  private readonly callerAddr: string;
   private readonly _factory:   FactoryModule;
   private activeWallet?:       WalletAdapter;
 
@@ -111,7 +109,6 @@ export class StreamsModule {
   constructor(private readonly config: ConduitConfig) {
     this.rpcUrl     = config.rpcUrl ?? DEFAULT_RPC[config.network];
     this.passphrase = NETWORK_PASSPHRASE[config.network];
-    this.callerAddr = this._signerPublicKey();
     this._factory   = new FactoryModule(config);
 
     if (config.wallet) {
@@ -130,25 +127,11 @@ export class StreamsModule {
     this._cachedCallerAddr = null;
   }
 
-  private _signer(): Signer | null {
-    return this.config.signer ?? null;
-  }
-
-  private _signerPublicKey(): string {
-    if (this.activeWallet) {
-      const pk = this.activeWallet.getPublicKey();
-      if (typeof pk === 'string') return pk;
-    }
-    if (this.config.signer) return this.config.signer.publicKey();
-    if (this.config.keypair) return this.config.keypair.publicKey();
-    return ZERO_ADDR;
-  }
-
   /**
    * Resolve the caller address, handling both sync and async getPublicKey().
-   * Unlike _signerPublicKey(), this can be used when the wallet adapter
-   * returns a promise - but it MUST only be called from async contexts.
-   * Results are cached per wallet configuration and invalidated on setWallet().
+   * Safe when the wallet adapter returns a promise — but it MUST only be
+   * called from async contexts. Results are cached per wallet configuration
+   * and invalidated on setWallet().
    */
   private async _resolveCallerAddress(): Promise<string> {
     if (this._cachedCallerAddr !== null) {
@@ -726,11 +709,12 @@ export class StreamsModule {
       return signed;
     }
     if (this.config.signer) {
-      const result = this.config.signer.sign(tx);
-      if (result != null) {
-        await result;
-      }
-      return tx;
+      // A Signer may mutate `tx` in place and return void, or return a new
+      // signed Transaction. Honour the return value when it is a Transaction;
+      // returning `tx` unconditionally (as before) dropped the signature for
+      // immutable-style signers, submitting an unsigned transaction.
+      const result = await this.config.signer.sign(tx);
+      return result instanceof Transaction ? result : tx;
     }
     if (this.config.keypair) {
       tx.sign(this.config.keypair);
