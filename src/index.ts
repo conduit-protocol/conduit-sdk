@@ -39,6 +39,8 @@ export type { FeeEstimateOptions } from './fee-estimator.js';
 export { WebSocketRelayer } from './relayer/WebSocketRelayer.js';
 export { ErrorMapper } from './relayer/ErrorMapper.js';
 export type { MappedErrorHandler } from './relayer/ErrorMapper.js';
+export { NonceManager } from './nonce/NonceManager.js';
+export type { NonceLock, NonceManagerOptions } from './nonce/NonceManager.js';
 
 // Utils are exported via the /utils subpath export, but also available here
 export {
@@ -47,6 +49,7 @@ export {
   calculateRate,
   calculateYield,
   streamProgress,
+  normalizeProgress,
   withdrawableLocal,
   bigintSafeStringify,
 } from './utils.js';
