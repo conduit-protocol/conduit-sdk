@@ -18,6 +18,7 @@ import type {
   FeeEstimate,
 } from './types/index.js';
 import type { WalletAdapter } from './adapters/types.js';
+import type { Signer } from './signer.js';
 import { KeypairWalletAdapter } from './adapters/keypair.js';
 import { toStroops, calculateRate, bigintSafeStringify } from './utils.js';
 import {
@@ -129,17 +130,6 @@ export class StreamsModule {
 
   private _signer(): Signer | null {
     return this.config.signer ?? null;
-  }
-
-  private _signerPublicKey(): string {
-    if (this.activeWallet) {
-      const pk = this.activeWallet.getPublicKey();
-      if (typeof pk === 'string') return pk;
-    }
-    const signer = this._signer();
-    if (signer) return signer.publicKey();
-    if (this.config.keypair) return this.config.keypair.publicKey();
-    return ZERO_ADDR;
   }
 
   /**
@@ -730,11 +720,12 @@ export class StreamsModule {
     }
     const signer = this._signer();
     if (signer) {
-      const result = signer.sign(tx);
-      if (result != null) {
-        await result;
-      }
-      return tx;
+      // A Signer may mutate `tx` in place and return void, or return a new
+      // signed Transaction. Honour the return value when it is a Transaction;
+      // returning `tx` unconditionally dropped the signature for
+      // immutable-style signers, submitting an unsigned transaction (#519).
+      const result = await signer.sign(tx);
+      return result instanceof Transaction ? result : tx;
     }
     if (this.config.keypair) {
       tx.sign(this.config.keypair);
