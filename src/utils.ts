@@ -104,11 +104,14 @@ export function streamProgress(stream: StreamInfo, nowSec = Math.floor(Date.now(
 export function withdrawableLocal(stream: StreamInfo, nowSec = Math.floor(Date.now() / 1000)): bigint {
   if (stream.cancelled) return 0n;
 
-  const effectiveNow = stream.paused
-    ? stream.pausedAt
-    : stream.endTime > 0 && nowSec > stream.endTime
-    ? stream.endTime
-    : nowSec;
+  // Mirror the on-chain `math::streamed_amount` clamp order
+  // (contracts/stream/src/math.rs): clamp to `endTime` first — a stream that
+  // has ended has fully streamed regardless of pause state — then, only while
+  // the stream is still running, freeze accrual at `pausedAt`.
+  const endClamped =
+    stream.endTime > 0 && nowSec > stream.endTime ? stream.endTime : nowSec;
+  const effectiveNow =
+    stream.paused && stream.pausedAt < endClamped ? stream.pausedAt : endClamped;
 
   if (effectiveNow < stream.startTime) return 0n;
 

@@ -253,6 +253,34 @@ describe('withdrawableLocal', () => {
     const s    = makeStream({ ratePerSecond: rate, startTime: now - 1000, withdrawn: 50_000n });
     expect(withdrawableLocal(s, now)).toBe(rate * 1000n - 50_000n);
   });
+
+  it('a stream paused *after* end_time has fully streamed (matches on-chain clamp order)', () => {
+    const now  = Math.floor(Date.now() / 1000);
+    const rate = 100n;
+    // start .. end (1000s of streaming) .. then paused, then now
+    const s = makeStream({
+      ratePerSecond: rate,
+      startTime:     now - 3000,
+      endTime:       now - 2000,
+      paused:        true,
+      pausedAt:      now - 500, // pause began well after the stream ended
+    });
+    // end_time wins: rate × (endTime − startTime) = 100 × 1000
+    expect(withdrawableLocal(s, now)).toBe(rate * 1000n);
+  });
+
+  it('a pause that began before end_time still freezes accrual', () => {
+    const now  = Math.floor(Date.now() / 1000);
+    const rate = 100n;
+    const s = makeStream({
+      ratePerSecond: rate,
+      startTime:     now - 1000,
+      endTime:       now + 1000,
+      paused:        true,
+      pausedAt:      now - 400, // pause began while still running
+    });
+    expect(withdrawableLocal(s, now)).toBe(rate * 600n);
+  });
 });
 
 // ── bigintSafeStringify ─────────────────────────────────────────────────────
