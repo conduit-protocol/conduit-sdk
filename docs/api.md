@@ -203,11 +203,21 @@ const sub = client.streams.subscribe(streamId, {
   onResume:    e => console.log('Resumed at:', e.resumedAt),
   onTopUp:     e => console.log('Topped up:', e.amount),
   onClawback:  e => console.log('Clawback:', e.amount),
-  pollInterval: 3000,  // ms; default 5000
+  onError:     err => console.warn('poll failed:', err),
+  pollInterval: 3000,          // ms; default 5000
+  maxBackoffMs: 60_000,        // cap on exponential backoff after failures; default 60_000
+  maxConsecutiveFailures: 10,  // stop polling after this many failures in a row; default 10 (0 = never)
 });
 
 sub.unsubscribe();
 ```
+
+> The first poll seeds its start ledger from `getLatestLedger()` (Soroban RPC's
+> `getEvents` requires one); a failed seed is retried on the next poll. After a
+> polling failure the retry delay grows exponentially
+> (`pollInterval · 2^(failures−1)`, capped at `maxBackoffMs`); a successful poll
+> resets it. Once `maxConsecutiveFailures` failures occur in a row the
+> subscription stops (a final `onError` is delivered first).
 
 > **All event payload fields are decoded.** `src/events.ts`'s `dispatchEvent()` parses every
 > multi-field event from its tuple `ScVal`s: `onWithdraw` → `{ recipient, amount,
@@ -645,11 +655,12 @@ still consumed sequentially even though simulation itself is not.
 
 ---
 
-## `NonceManager` (internal — `src/nonce/NonceManager.ts`)
+## `NonceManager` (`src/nonce/NonceManager.ts`)
 
-Not currently part of the package's public exports (`src/index.ts`) or the rollup-built `dist/cjs`
-bundle (only reachable from the entry point graph); documented here for maintainers and for
-consumers building against SDK source directly.
+Exported from the package entry point (`src/index.ts`) alongside its `NonceLock` and
+`NonceManagerOptions` types. This is the bigint-based implementation; the earlier
+`number`-based `src/nonce-manager.ts` duplicate (which could not represent Stellar
+int64 sequence numbers above 2^53) has been removed.
 
 ```typescript
 const nonces = new NonceManager({ startNonce: 0n, maxNonce: 1_000_000n });

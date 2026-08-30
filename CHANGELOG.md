@@ -5,6 +5,9 @@ All notable changes are documented here. Format based on [Keep a Changelog](http
 ## [Unreleased]
 
 ### Added
+- `NonceManager` (with its `NonceLock` / `NonceManagerOptions` types) is now exported from the package entry point; the bigint-based `src/nonce/NonceManager.ts` is the only implementation (#483)
+- `normalizeProgress(value)` utility (exported) — maps `streamProgress()`'s open-ended-stream `NaN` result to the midpoint `0.5`; `Module36` and `Module48` now share it instead of each reimplementing the check (#482)
+- `subscribe()` accepts `maxBackoffMs` (default 60000) and `maxConsecutiveFailures` (default 10) — event polling now applies exponential backoff after consecutive failures and stops against a permanently-broken endpoint (#485)
 - `StreamsModule.streamedTotal()` — read-only wrapper for `DripStream::streamed_total`, exposing the cumulative amount streamed since start regardless of withdrawals (#455)
 - `StreamsModule.estimateFee(operation)` runs a Soroban simulation for any stream operation and returns the exact estimated network fee (`FeeEstimate` with `totalFee`, `resourceFee`, `baseFee`, `instructions`) so the UI can display the fee before the user clicks "Create Stream".
 - `Module36` stream snapshot diff engine with LRU memoization for Feature #36 (#370); `getPerformanceMetrics()` reports an honest, workload-dependent measured speedup rather than a fixed percentage
@@ -34,6 +37,8 @@ All notable changes are documented here. Format based on [Keep a Changelog](http
 - Documented `StreamBuilder.startTime()`/`endTime()`/`clawbackEnabled()`/`toContractArgs()`/`toBatchOperation()` in `docs/api.md`, and added a note under `ConduitBatcher` clarifying that `execute()` alone cannot build a real `create_stream` invocation (#435).
 
 ### Fixed
+- **Event subscriptions never delivered a single event** — `subscribeToStream()`'s first poll called Soroban RPC's `getEvents` with no `startLedger` (required), the rejection was swallowed, and `startLedger` was never seeded, so the loop retried the same broken request forever. The first poll now seeds `startLedger` from `getLatestLedger()`, retrying the seed on a later poll if it fails (#484)
+- Event polling errors were swallowed and retried at a fixed interval forever, with no bound against a permanently-broken RPC endpoint. Consecutive failures now back off exponentially and, after `maxConsecutiveFailures` in a row, stop the subscription (#485)
 - `Module26`, `Module36`, `Module48`, and `Module49` now share a single `LruMemoCache` helper (`src/lru-memo-cache.ts`) for eviction (and, for the first three, hit/miss speedup measurement) instead of each re-implementing the same LRU-memoizer logic (#479).
 - `Module26.aggregatePortfolio()` now fingerprints the portfolio with two incremental hashes (FNV-1a + djb2) instead of building a full `items.map(...).join('|')` string on every call, including cache hits — for a large portfolio that string could run to many KB and dominated the "cached" path, so `measuredSpeedupPercent` mostly measured string building rather than the aggregation it memoizes. Two independent hashes are combined into the key rather than one, since a single 32-bit hash would make wrong-portfolio cache collisions realistic at long-running-instance scale (#480).
 - `Module48.processSingleItem()` now updates `totalProcessed` and the execution-time accumulator on every call, so `getPerformanceMetrics().averageExecutionTimeMs` is accurate whether streams are processed via `processStreamBatch()` or by calling `processSingleItem()` directly; previously only `processStreamBatch()` touched `totalProcessed`, so direct `processSingleItem()` calls always reported `averageExecutionTimeMs: 0` (#481).
