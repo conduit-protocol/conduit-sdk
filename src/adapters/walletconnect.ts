@@ -1,5 +1,6 @@
 import { Transaction } from '@stellar/stellar-sdk';
 import type { WalletAdapter, SignTransactionOptions } from './types.js';
+import { CAIP2_TO_NETWORK } from '../errors.js';
 
 export interface WalletConnectAppMetadata {
   name: string;
@@ -43,18 +44,6 @@ export interface WalletConnectAdapterOptions {
 }
 
 /**
- * Exhaustive map of CAIP-2 identifiers this adapter accepts to their
- * human-readable Stellar network names. Anything not in this map is
- * rejected at construction time so an invalid chain ID never silently
- * reaches the smart contract (fixes #157).
- */
-const SUPPORTED_CAIP2_CHAINS: Readonly<Record<string, string>> = {
-  'stellar:pubnet':  'mainnet',
-  'stellar:testnet': 'testnet',
-  'stellar:local':   'local',
-};
-
-/**
  * Native WalletConnect v2 adapter for mobile and browser-based wallet integration.
  * Supports Stellar / Soroban transaction signing via CAIP-2 RPC protocols.
  */
@@ -73,8 +62,8 @@ export class WalletConnectAdapter implements WalletAdapter {
     // Validate the CAIP-2 chain identifier at construction time so callers
     // get an immediate, descriptive error instead of a silent cross-chain
     // payload submission later (fixes #157).
-    if (!(chainId in SUPPORTED_CAIP2_CHAINS)) {
-      const supported = Object.keys(SUPPORTED_CAIP2_CHAINS).join(', ');
+    if (!(chainId in CAIP2_TO_NETWORK)) {
+      const supported = Object.keys(CAIP2_TO_NETWORK).join(', ');
       throw new Error(
         `WalletConnectAdapter: unsupported chainId '${chainId}'. ` +
         `Supported chains: ${supported}.`,

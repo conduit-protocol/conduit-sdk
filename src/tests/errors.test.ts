@@ -7,6 +7,8 @@ import {
   StreamFiNetworkError,
   InsufficientBalanceError,
   RateLimitError,
+  CAIP2_TO_NETWORK,
+  SUPPORTED_NETWORKS,
 } from '../errors.js';
 
 describe('ConduitError', () => {
@@ -160,5 +162,29 @@ describe('RateLimitError', () => {
     const raw = { response: { status: 500 } };
     const err = RateLimitError.fromRpcError(raw);
     expect(err).toBeNull();
+  });
+});
+
+describe('CAIP2_TO_NETWORK', () => {
+  it('maps every supported CAIP-2 chain to a supported network name', () => {
+    for (const network of Object.values(CAIP2_TO_NETWORK)) {
+      expect(SUPPORTED_NETWORKS as readonly string[]).toContain(network);
+    }
+  });
+
+  it('is the map both ConduitClient and WalletConnectAdapter validate against', async () => {
+    // ConduitClient rejects a wallet whose chainId is not a key here...
+    const { ConduitClient } = await import('../client.js');
+    const badWallet = { chainId: 'eip155:1', getPublicKey: () => 'G', signTransaction: async (t: unknown) => t };
+    expect(() => new ConduitClient({
+      network: 'testnet',
+      factoryAddress: 'C',
+      wallet: badWallet as never,
+    })).toThrow();
+
+    // ...and WalletConnectAdapter rejects the same unknown chainId at construction.
+    const { WalletConnectAdapter } = await import('../adapters/walletconnect.js');
+    expect(() => new WalletConnectAdapter({ chainId: 'eip155:1' })).toThrow(/unsupported chainId/);
+    expect(() => new WalletConnectAdapter({ chainId: 'stellar:testnet' })).not.toThrow();
   });
 });

@@ -111,6 +111,19 @@ const MESSAGES_BY_CONTRACT: Record<ConduitContract, Record<number, string>> = {
 export const SUPPORTED_NETWORKS = ['mainnet', 'testnet', 'local'] as const;
 
 /**
+ * Single source of truth mapping CAIP-2 chain identifiers (as used by
+ * WalletConnect adapters) to the canonical SDK network names. Consumed by
+ * `ConduitClient`'s `assertWalletNetworkMatch` and by `WalletConnectAdapter`'s
+ * construction-time chain validation so the two can never silently disagree.
+ * Any CAIP-2 value not present here is unsupported.
+ */
+export const CAIP2_TO_NETWORK: Readonly<Record<string, (typeof SUPPORTED_NETWORKS)[number]>> = {
+  'stellar:pubnet':  'mainnet',
+  'stellar:testnet': 'testnet',
+  'stellar:local':   'local',
+};
+
+/**
  * Thrown synchronously by `ConduitClient` constructor when an unrecognised
  * network string is supplied — before any RPC connection is attempted.
  *

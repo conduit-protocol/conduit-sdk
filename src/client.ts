@@ -4,19 +4,7 @@ import { DEFAULT_RPC }               from './soroban.js';
 import { StreamsModule }             from './streams.js';
 import { FactoryModule }             from './factory.js';
 import { GovernorModule }            from './governor.js';
-import { SUPPORTED_NETWORKS, UnsupportedChainError } from './errors.js';
-
-/**
- * Map from CAIP-2 chain identifiers used by WalletConnect adapters to the
- * canonical SDK network names they correspond to.  Any CAIP-2 value not
- * present here is considered unsupported and will be rejected by
- * `assertWalletNetworkMatch`.
- */
-const CAIP2_TO_NETWORK: Readonly<Record<string, string>> = {
-  'stellar:pubnet':  'mainnet',
-  'stellar:testnet': 'testnet',
-  'stellar:local':   'local',
-};
+import { SUPPORTED_NETWORKS, CAIP2_TO_NETWORK, UnsupportedChainError } from './errors.js';
 
 /**
  * Validate that `wallet`'s network/chain matches the SDK's configured
