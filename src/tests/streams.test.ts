@@ -426,11 +426,40 @@ describe('StreamsModule — subscribe()', () => {
 });
 
 describe('StreamsModule — subscribeAsync()', () => {
+  const STREAM_ADDR = 'CBQHNAXSI55GX2GN6D67GK7BHVPSLJUGZQEU7WJ5LKR5PNUCGLIMAO4K';
+
   it('throws when stream address is not found', async () => {
     mockStreamAddress.mockResolvedValue(null);
     const { StreamsModule } = await import('../streams.js');
     const sdk = new StreamsModule(makeConfig(false));
     await expect(sdk.subscribeAsync(42n, {})).rejects.toThrow('not found');
+  });
+
+  it('passes the resolved rpcUrl (network default) to subscribeToStream, never undefined', async () => {
+    mockStreamAddress.mockResolvedValue(STREAM_ADDR);
+    const { subscribeToStream } = await import('../events.js');
+    const spy = vi.mocked(subscribeToStream);
+    spy.mockClear();
+
+    const { StreamsModule } = await import('../streams.js');
+    // makeConfig() sets no rpcUrl → constructor falls back to DEFAULT_RPC.testnet
+    await new StreamsModule(makeConfig(false)).subscribeAsync(1n, {});
+
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy.mock.calls[0]![0]).toBe('https://soroban-testnet.stellar.org');
+  });
+
+  it('honours an explicit rpcUrl override', async () => {
+    mockStreamAddress.mockResolvedValue(STREAM_ADDR);
+    const { subscribeToStream } = await import('../events.js');
+    const spy = vi.mocked(subscribeToStream);
+    spy.mockClear();
+
+    const { StreamsModule } = await import('../streams.js');
+    await new StreamsModule({ ...makeConfig(false), rpcUrl: 'https://my-node.example' })
+      .subscribeAsync(1n, {});
+
+    expect(spy.mock.calls[0]![0]).toBe('https://my-node.example');
   });
 });
 
