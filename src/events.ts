@@ -41,14 +41,14 @@ function tupleFields(val: xdr.ScVal): xdr.ScVal[] {
   return val.vec() ?? [];
 }
 
-function i128Field(fields: xdr.ScVal[], index: number): bigint | undefined {
+function i128Field(fields: xdr.ScVal[], index: number): bigint {
   const field = fields[index];
-  return field ? scValToI128(field) : undefined;
+  return field ? scValToI128(field) : 0n;
 }
 
-function u64Field(fields: xdr.ScVal[], index: number): number | undefined {
+function u64Field(fields: xdr.ScVal[], index: number): number {
   const field = fields[index];
-  return field ? Number(scValToU64(field)) : undefined;
+  return field ? Number(scValToU64(field)) : 0;
 }
 
 /**
