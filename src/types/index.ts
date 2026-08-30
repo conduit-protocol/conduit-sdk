@@ -146,6 +146,18 @@ export interface StreamEventHandlers {
   onGap?:      (gap: EventGap)     => void;
   /** Polling interval in ms; default 5000 */
   pollInterval?: number;
+  /**
+   * Upper bound (ms) on the exponential backoff applied after consecutive
+   * polling failures. Default 60000. The delay is
+   * `min(pollInterval * 2^(failures - 1), maxBackoffMs)`.
+   */
+  maxBackoffMs?: number;
+  /**
+   * Number of consecutive polling failures after which the subscription
+   * stops polling entirely (a final `onError` is delivered first). Default 10.
+   * Set to 0 to poll forever regardless of failures.
+   */
+  maxConsecutiveFailures?: number;
 }
 
 export interface Subscription {

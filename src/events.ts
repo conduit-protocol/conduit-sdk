@@ -83,10 +83,13 @@ export function subscribeToStream(
 ): Subscription {
   const server       = createRpcServer(rpcUrl);
   const pollInterval = handlers.pollInterval ?? 5000;
-  let   startLedger  = 0;  // fallback cursor for the initial poll
+  const maxBackoffMs = handlers.maxBackoffMs ?? 60_000;
+  const maxConsecutiveFailures = handlers.maxConsecutiveFailures ?? 10;
+  let   startLedger  = 0;  // seeded from getLatestLedger() before the first poll
   let   cursor: string | undefined;
   let   stopped      = false;
   let   timer: ReturnType<typeof setTimeout> | undefined;
+  let   consecutiveFailures = 0;
   // Last per-contract event sequence seen (topics[2]), for gap detection
   // across a poll or reconnect — see contracts/stream/src/events.rs.
   let   lastSequence: bigint | undefined;
@@ -95,14 +98,25 @@ export function subscribeToStream(
     if (stopped) return;
 
     try {
+      // Soroban RPC's `getEvents` rejects a request that has neither a
+      // `cursor` nor a `startLedger`. Seed `startLedger` from the current
+      // ledger before the first poll; if this seed itself fails it surfaces
+      // as a polling failure and is retried on the next poll.
+      if (!cursor && startLedger === 0) {
+        const latest = await server.getLatestLedger();
+        startLedger = latest.sequence;
+      }
+
       const response = await server.getEvents({
-        ...(cursor ? { cursor } : (startLedger > 0 ? { startLedger } : {})),
+        ...(cursor ? { cursor } : { startLedger }),
         filters: [{
           type:        'contract',
           contractIds: [streamAddress],
         }],
         limit: 100,
       });
+
+      consecutiveFailures = 0;
 
       if (response.events.length > 0) {
         for (const event of response.events) {
@@ -132,19 +146,39 @@ export function subscribeToStream(
         }
       }
     } catch (err) {
-      // Swallow polling errors; the subscription continues
       const error = err instanceof Error ? err : new Error(String(err));
-      console.warn('[conduit-sdk] event polling error:', error);
+      consecutiveFailures++;
+      console.warn(
+        `[conduit-sdk] event polling error (failure ${consecutiveFailures}):`,
+        error,
+      );
 
-      // A consumer error handler must not stop future polling.
+      // A consumer error handler must not itself stop future polling.
       try {
         handlers.onError?.(error);
       } catch (handlerError) {
         console.warn('[conduit-sdk] event polling onError handler error:', handlerError);
       }
+
+      // Give up against a permanently-broken endpoint rather than retrying
+      // at a fixed interval forever.
+      if (maxConsecutiveFailures > 0 && consecutiveFailures >= maxConsecutiveFailures) {
+        console.warn(
+          `[conduit-sdk] event polling stopped after ${consecutiveFailures} consecutive failures`,
+        );
+        stopped = true;
+        return;
+      }
     }
 
-    if (!stopped) timer = setTimeout(poll, pollInterval);
+    if (!stopped) {
+      // Exponential backoff while failures persist; a successful poll resets
+      // `consecutiveFailures` to 0, so this is just `pollInterval` in steady state.
+      const delay = consecutiveFailures === 0
+        ? pollInterval
+        : Math.min(pollInterval * 2 ** (consecutiveFailures - 1), maxBackoffMs);
+      timer = setTimeout(poll, delay);
+    }
   }
 
   // Start polling immediately
