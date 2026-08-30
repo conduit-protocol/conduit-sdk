@@ -98,6 +98,16 @@ export function streamProgress(stream: StreamInfo, nowSec = Math.floor(Date.now(
 }
 
 /**
+ * Normalizes a `streamProgress()` result for display / comparison purposes,
+ * mapping the NaN case (an open-ended stream that has already started) to the
+ * midpoint 0.5. Shared by Module36 and Module48 so their progress deltas agree
+ * at the edges instead of drifting via independent reimplementations.
+ */
+export function normalizeProgress(value: number): number {
+  return Number.isNaN(value) ? 0.5 : value;
+}
+
+/**
  * Current withdrawable balance from a StreamInfo snapshot, without a contract call.
  * Accounts for pause state.
  */

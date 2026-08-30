@@ -5,6 +5,7 @@ import {
   calculateRate,
   calculateYield,
   streamProgress,
+  normalizeProgress,
   withdrawableLocal,
   bigintSafeStringify,
   isValidAddress,
@@ -195,6 +196,23 @@ describe('streamProgress', () => {
     const now = Math.floor(Date.now() / 1000);
     const s = makeStream({ startTime: now - 100, endTime: 0 });
     expect(Number.isNaN(streamProgress(s, now))).toBe(true);
+  });
+});
+
+// ── normalizeProgress ────────────────────────────────────────────────────────
+// Module36 and Module48 both need streamProgress()'s NaN (open-ended, already
+// started) result turned into a defined midpoint. This must be one shared
+// helper (see #482), not two independent reimplementations that can drift.
+
+describe('normalizeProgress', () => {
+  it('maps NaN to the midpoint 0.5', () => {
+    expect(normalizeProgress(Number.NaN)).toBe(0.5);
+  });
+
+  it('passes finite values through unchanged', () => {
+    expect(normalizeProgress(0)).toBe(0);
+    expect(normalizeProgress(1)).toBe(1);
+    expect(normalizeProgress(0.25)).toBe(0.25);
   });
 });
 
