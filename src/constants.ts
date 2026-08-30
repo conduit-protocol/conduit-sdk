@@ -48,3 +48,16 @@ export function clampListLimit(limit: number): number {
   if (!Number.isFinite(limit)) return DEFAULT_LIST_LIMIT;
   return Math.min(Math.max(Math.trunc(limit), 0), MAX_LIST_LIMIT);
 }
+
+/**
+ * Bit-flags packed into the on-chain `StreamInfo.flags` (`u32`). `paused`,
+ * `cancelled` and `clawback_enabled` are NOT individual struct fields — they
+ * live in these bits.
+ *
+ * Mirrors `FLAG_PAUSED` / `FLAG_CLAWBACK_ENABLED` / `FLAG_CANCELLED` and the
+ * `StreamInfo::is_paused()` / `is_cancelled()` / `is_clawback_enabled()`
+ * getters in `contracts/stream/src/storage.rs`.
+ */
+export const STREAM_FLAG_PAUSED = 1;
+export const STREAM_FLAG_CLAWBACK_ENABLED = 1 << 1;
+export const STREAM_FLAG_CANCELLED = 1 << 2;
