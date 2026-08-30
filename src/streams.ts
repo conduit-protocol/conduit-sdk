@@ -652,7 +652,11 @@ export class StreamsModule {
     const address = await this._factory.streamAddress(BigInt(streamId));
     if (!address) throw new Error(`Stream ${streamId} not found`);
     const { subscribeToStream } = await import('./events.js');
-    return subscribeToStream(this.config.rpcUrl!, address, handlers);
+    // Use the resolved `this.rpcUrl` (constructor: `config.rpcUrl ??
+    // DEFAULT_RPC[config.network]`), not the raw optional `config.rpcUrl` —
+    // otherwise a client built without an explicit rpcUrl passes `undefined`
+    // to `createRpcServer`, which throws / never connects.
+    return subscribeToStream(this.rpcUrl, address, handlers);
   }
 
   /** Synchronous subscribe - resolves address lazily on first poll tick. */
