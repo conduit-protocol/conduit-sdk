@@ -526,13 +526,17 @@ export class StreamsModule {
       throw new Error(`Simulation failed: ${simResult.error}`);
     }
 
-    const resourceFee = Number(simResult.minResourceFee);
-    const cpuInstructions = Number(simResult.cost.cpuInsns);
+    // bigint stroops throughout — matches FeeEstimator's convention and stays
+    // exact for resource fees beyond Number.MAX_SAFE_INTEGER. `estimateRequiredFee`
+    // is the same extraction (with fallback) that `create()` uses.
+    const resourceFee = estimateRequiredFee(simResult);
+    const baseFee = BigInt(BASE_FEE);
+    const cpuInstructions = BigInt(simResult.cost.cpuInsns);
 
     return {
-      totalFee: Number(BASE_FEE) + resourceFee,
+      totalFee: baseFee + resourceFee,
       resourceFee,
-      baseFee: Number(BASE_FEE),
+      baseFee,
       instructions: cpuInstructions,
     };
   }

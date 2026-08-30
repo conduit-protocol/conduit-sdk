@@ -222,11 +222,11 @@ export type StreamOperation =
 
 export interface FeeEstimate {
   /** Total estimated fee in stroops */
-  totalFee: number;
+  totalFee: bigint;
   /** Resource fee component (CPU/RAM) in stroops */
-  resourceFee: number;
+  resourceFee: bigint;
   /** Base (inclusion) fee component in stroops */
-  baseFee: number;
+  baseFee: bigint;
   /** Estimated CPU instructions */
-  instructions: number;
+  instructions: bigint;
 }

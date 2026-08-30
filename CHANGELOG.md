@@ -5,6 +5,7 @@ All notable changes are documented here. Format based on [Keep a Changelog](http
 ## [Unreleased]
 
 ### Added
+- `CAIP2_TO_NETWORK` is now exported — a single CAIP-2→network map shared by `ConduitClient`'s wallet-network check and `WalletConnectAdapter`'s construction-time validation, which previously kept independent verbatim copies (#445)
 - `NonceManager` (with its `NonceLock` / `NonceManagerOptions` types) is now exported from the package entry point; the bigint-based `src/nonce/NonceManager.ts` is the only implementation (#483)
 - `normalizeProgress(value)` utility (exported) — maps `streamProgress()`'s open-ended-stream `NaN` result to the midpoint `0.5`; `Module36` and `Module48` now share it instead of each reimplementing the check (#482)
 - `subscribe()` accepts `maxBackoffMs` (default 60000) and `maxConsecutiveFailures` (default 10) — event polling now applies exponential backoff after consecutive failures and stops against a permanently-broken endpoint (#485)
@@ -37,6 +38,7 @@ All notable changes are documented here. Format based on [Keep a Changelog](http
 - Documented `StreamBuilder.startTime()`/`endTime()`/`clawbackEnabled()`/`toContractArgs()`/`toBatchOperation()` in `docs/api.md`, and added a note under `ConduitBatcher` clarifying that `execute()` alone cannot build a real `create_stream` invocation (#435).
 
 ### Fixed
+- **Breaking:** `StreamsModule.estimateFee()`'s `FeeEstimate` fields (`totalFee`, `resourceFee`, `baseFee`, `instructions`) are now `bigint` stroops, not `number` — matching `FeeEstimator`'s convention and staying exact for resource fees beyond `Number.MAX_SAFE_INTEGER`. The resource fee is extracted via `estimateRequiredFee()` (same fallback as `create()`) (#447)
 - **Event subscriptions never delivered a single event** — `subscribeToStream()`'s first poll called Soroban RPC's `getEvents` with no `startLedger` (required), the rejection was swallowed, and `startLedger` was never seeded, so the loop retried the same broken request forever. The first poll now seeds `startLedger` from `getLatestLedger()`, retrying the seed on a later poll if it fails (#484)
 - Event polling errors were swallowed and retried at a fixed interval forever, with no bound against a permanently-broken RPC endpoint. Consecutive failures now back off exponentially and, after `maxConsecutiveFailures` in a row, stop the subscription (#485)
 - `Module26`, `Module36`, `Module48`, and `Module49` now share a single `LruMemoCache` helper (`src/lru-memo-cache.ts`) for eviction (and, for the first three, hit/miss speedup measurement) instead of each re-implementing the same LRU-memoizer logic (#479).
