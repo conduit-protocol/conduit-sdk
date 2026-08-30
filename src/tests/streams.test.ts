@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Keypair, xdr } from '@stellar/stellar-sdk';
 import { ConduitError, StreamErrorCode } from '../errors.js';
+import {
+  STREAM_FLAG_PAUSED,
+  STREAM_FLAG_CANCELLED,
+  STREAM_FLAG_CLAWBACK_ENABLED,
+} from '../constants.js';
 import type { ConduitConfig } from '../types/index.js';
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
@@ -211,6 +216,78 @@ describe('StreamsModule — _resolveAddr via get()', () => {
     expect(err).toBeInstanceOf(ConduitError);
     expect((err as ConduitError).contract).toBe('stream');
     expect((err as ConduitError).code).toBe(StreamErrorCode.StreamNotFound);
+  });
+});
+
+describe('StreamsModule — get() flag decoding', () => {
+  const STREAM_ADDR = 'CBQHNAXSI55GX2GN6D67GK7BHVPSLJUGZQEU7WJ5LKR5PNUCGLIMAO4K';
+
+  const scvMap = (entries: Record<string, xdr.ScVal>): xdr.ScVal =>
+    xdr.ScVal.scvMap(
+      Object.entries(entries).map(
+        ([k, v]) => new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol(k), val: v }),
+      ),
+    );
+  const u32 = (n: number) => xdr.ScVal.scvU32(n);
+  const u64 = (n: bigint) => xdr.ScVal.scvU64(xdr.Uint64.fromString(n.toString()));
+
+  const infoWith = (flags: number, pausedAt = 0n): xdr.ScVal =>
+    scvMap({ flags: u32(flags), paused_at: u64(pausedAt) });
+
+  beforeEach(() => {
+    mockStreamAddress.mockReset().mockResolvedValue(STREAM_ADDR);
+    mockSimulate.mockReset();
+  });
+
+  async function getInfo(retval: xdr.ScVal) {
+    mockSimulate.mockResolvedValue({ result: { retval } });
+    const { StreamsModule } = await import('../streams.js');
+    return new StreamsModule(makeConfig(false)).get(1n);
+  }
+
+  it('reports every flag false when flags = 0', async () => {
+    const info = await getInfo(infoWith(0));
+    expect(info.paused).toBe(false);
+    expect(info.cancelled).toBe(false);
+    expect(info.clawbackEnabled).toBe(false);
+  });
+
+  it('decodes FLAG_PAUSED (bit 0)', async () => {
+    const info = await getInfo(infoWith(STREAM_FLAG_PAUSED, 1_700_000_000n));
+    expect(info.paused).toBe(true);
+    expect(info.pausedAt).toBe(1_700_000_000);
+    expect(info.cancelled).toBe(false);
+    expect(info.clawbackEnabled).toBe(false);
+  });
+
+  it('decodes FLAG_CLAWBACK_ENABLED (bit 1)', async () => {
+    const info = await getInfo(infoWith(STREAM_FLAG_CLAWBACK_ENABLED));
+    expect(info.clawbackEnabled).toBe(true);
+    expect(info.paused).toBe(false);
+    expect(info.cancelled).toBe(false);
+  });
+
+  it('decodes FLAG_CANCELLED (bit 2)', async () => {
+    const info = await getInfo(infoWith(STREAM_FLAG_CANCELLED));
+    expect(info.cancelled).toBe(true);
+    expect(info.paused).toBe(false);
+    expect(info.clawbackEnabled).toBe(false);
+  });
+
+  it('decodes several flags packed together', async () => {
+    const info = await getInfo(
+      infoWith(STREAM_FLAG_PAUSED | STREAM_FLAG_CANCELLED | STREAM_FLAG_CLAWBACK_ENABLED),
+    );
+    expect(info.paused).toBe(true);
+    expect(info.cancelled).toBe(true);
+    expect(info.clawbackEnabled).toBe(true);
+  });
+
+  it('defaults every flag to false when the contract omits `flags`', async () => {
+    const info = await getInfo(scvMap({ paused_at: u64(0n) }));
+    expect(info.paused).toBe(false);
+    expect(info.cancelled).toBe(false);
+    expect(info.clawbackEnabled).toBe(false);
   });
 });
 
