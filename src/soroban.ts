@@ -305,7 +305,7 @@ export async function getTokenDecimals(
   const promise = (async () => {
     const tx  = await buildContractCallTx(rpcUrl, passphrase, callerAddr, tokenId, 'decimals', []);
     const val = await simulateReadOnly(rpcUrl, passphrase, tx);
-    return val.u32();
+    return scValToU32(val);
   })();
 
   _tokenDecimalsCache.set(cacheKey, promise);

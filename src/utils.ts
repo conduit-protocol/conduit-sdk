@@ -37,16 +37,18 @@ export function toStroops(amount: string, decimals = 7): bigint {
 
 /** Convert stroops (bigint) to a display amount string */
 export function fromStroops(stroops: bigint, decimals = 7): string {
+  const neg = stroops < 0n;
+  const abs = neg ? -stroops : stroops;
   const factor = pow10(decimals);
-  const whole = stroops / factor;
-  const rem = stroops % factor;
+  const whole = abs / factor;
+  const rem = abs % factor;
   const frac = rem.toString().padStart(decimals, '0');
   let end = frac.length;
   while (end > 1 && frac.charCodeAt(end - 1) === 48) {
     end--;
   }
   const trimmed = frac.slice(0, end);
-  return `${whole}.${trimmed}`;
+  return `${neg ? '-' : ''}${whole}.${trimmed}`;
 }
 
 /**

@@ -9,6 +9,7 @@ import {
   buildContractCallTx,
   simulateReadOnly,
   scValToI128,
+  scValToU32,
   scValToU64,
   NETWORK_PASSPHRASE,
   DEFAULT_RPC,
@@ -65,8 +66,9 @@ function parseGovernorConfig(val: xdr.ScVal): GovernorConfig {
     m[k] = e.val();
   }
   return {
-    feeBps:             m['fee_bps']?.u32() ?? 0,
+    feeBps:             m['fee_bps'] ? scValToU32(m['fee_bps']) : 0,
     minDurationSeconds: m['min_duration_seconds'] ? Number(scValToU64(m['min_duration_seconds'])) : 0,
+    maxDurationSeconds: m['max_duration_seconds'] ? Number(scValToU64(m['max_duration_seconds'])) : 0,
     maxRatePerSecond:   m['max_rate_per_second'] ? scValToI128(m['max_rate_per_second']) : 0n,
     // exactOptionalPropertyTypes forbids assigning `undefined` to an optional
     // key directly — the key must be entirely absent instead, hence the

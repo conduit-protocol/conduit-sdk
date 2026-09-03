@@ -1,5 +1,6 @@
 import { ConduitError, UNKNOWN_CONTRACT_ERROR_CODE } from './errors.js';
 import { IndexerTimeoutError, OperationAbortedError } from './errors.js';
+import { bigintSafeStringify } from './utils.js';
 
 export interface GraphQLQueryOptions {
   query: string;
@@ -206,7 +207,7 @@ export class GraphQLIndexer {
       fetchFn,
       this.endpoint,
       headers,
-      JSON.stringify(payload),
+      JSON.stringify({ ...payload, variables: bigintSafeStringify(payload.variables) }),
       timeoutMs,
       callerSignal,
     );
@@ -407,7 +408,7 @@ export class GraphQLIndexer {
             type: 'subscribe',
             payload: {
               query: options.query,
-              variables,
+              variables: bigintSafeStringify(variables),
             },
           });
         } catch (err) {
@@ -493,7 +494,7 @@ export class GraphQLIndexer {
         fetchFn(this.endpoint, {
           method: 'POST',
           headers,
-          body: JSON.stringify({ query: options.query, variables }),
+          body: JSON.stringify({ query: options.query, variables: bigintSafeStringify(variables) }),
           signal: abortController.signal,
         })
           .then(async (response: Response) => {

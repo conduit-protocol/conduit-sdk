@@ -144,6 +144,7 @@ export interface GovernorConfig {
   feeBps:              number;
   feeRecipient?:       string;
   minDurationSeconds:  number;
+  maxDurationSeconds:  number;
   maxRatePerSecond:    bigint;
   factoryAddress?:     string;
 }
