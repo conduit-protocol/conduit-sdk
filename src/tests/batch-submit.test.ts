@@ -12,9 +12,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SorobanRpc } from '@stellar/stellar-sdk';
 
-const { mockSendTransaction, mockGetTransaction } = vi.hoisted(() => ({
+const { mockSendTransaction, mockGetTransaction, mockSimulateTransaction } = vi.hoisted(() => ({
   mockSendTransaction: vi.fn(),
   mockGetTransaction:  vi.fn(),
+  mockSimulateTransaction: vi.fn(),
 }));
 
 vi.mock('@stellar/stellar-sdk', async () => {
@@ -34,6 +35,7 @@ vi.mock('@stellar/stellar-sdk', async () => {
         return {
           sendTransaction: mockSendTransaction,
           getTransaction:  mockGetTransaction,
+          simulateTransaction: mockSimulateTransaction,
         };
       }),
       Api: (actual as any).SorobanRpc.Api,
@@ -78,6 +80,7 @@ const OPTS: BatchSubmitOptions = {
 beforeEach(() => {
   clearServerCache();
   mockSendTransaction.mockReset();
+  mockSimulateTransaction.mockReset();
   mockGetTransaction.mockReset();
 });
 
@@ -399,5 +402,60 @@ describe('submitBatch — abort signal', () => {
     expect(result.outcomes[0]!.status).toBe('SUCCESS');
     expect(result.outcomes[1]!.status).toBe('SKIPPED');
     expect(result.outcomes[2]!.status).toBe('SKIPPED');
+  });
+
+  describe('submitBatch — dryRun option (#608)', () => {
+    it('simulates each transaction without calling sendTransaction', async () => {
+      mockSimulateTransaction.mockResolvedValue({
+        minResourceFee: '100',
+        results: [],
+      });
+
+      const txs = [makeTx(0), makeTx(1)];
+      const result = await submitBatch(txs, RPC_URL, { ...OPTS, dryRun: true });
+
+      expect(result.allSucceeded).toBe(true);
+      expect(result.firstFailureIndex).toBe(-1);
+      expect(result.outcomes).toHaveLength(2);
+      expect(result.outcomes[0]!.status).toBe('SUCCESS');
+      expect(result.outcomes[1]!.status).toBe('SUCCESS');
+
+      expect(mockSimulateTransaction).toHaveBeenCalledTimes(2);
+      expect(mockSendTransaction).not.toHaveBeenCalled();
+      expect(mockGetTransaction).not.toHaveBeenCalled();
+    });
+
+    it('marks simulated error as FAILED and skips subsequent transactions', async () => {
+      mockSimulateTransaction
+        .mockResolvedValueOnce({ minResourceFee: '100', results: [] })
+        .mockResolvedValueOnce({ error: 'HostError: Error(Contract, #1)' });
+
+      const txs = [makeTx(0), makeTx(1), makeTx(2)];
+      const result = await submitBatch(txs, RPC_URL, { ...OPTS, dryRun: true });
+
+      expect(result.allSucceeded).toBe(false);
+      expect(result.firstFailureIndex).toBe(1);
+      expect(result.outcomes[0]!.status).toBe('SUCCESS');
+      expect(result.outcomes[1]!.status).toBe('FAILED');
+      expect(result.outcomes[1]!.error).toContain('HostError');
+      expect(result.outcomes[2]!.status).toBe('SKIPPED');
+
+      expect(mockSendTransaction).not.toHaveBeenCalled();
+    });
+
+    it('marks RPC exception as ERROR during simulation and skips subsequent transactions', async () => {
+      mockSimulateTransaction.mockRejectedValueOnce(new Error('RPC network unreachable'));
+
+      const txs = [makeTx(0), makeTx(1)];
+      const result = await submitBatch(txs, RPC_URL, { ...OPTS, dryRun: true });
+
+      expect(result.allSucceeded).toBe(false);
+      expect(result.firstFailureIndex).toBe(0);
+      expect(result.outcomes[0]!.status).toBe('ERROR');
+      expect(result.outcomes[0]!.error).toContain('RPC network unreachable');
+      expect(result.outcomes[1]!.status).toBe('SKIPPED');
+
+      expect(mockSendTransaction).not.toHaveBeenCalled();
+    });
   });
 });

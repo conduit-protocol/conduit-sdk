@@ -433,6 +433,11 @@ export interface BatchSubmitOptions {
    * terminal state (SUCCESS, FAILED, SKIPPED, or ERROR).
    */
   onProgress?: (progress: { index: number; method: string; status: BatchTxStatus }) => void;
+  /**
+   * If true, simulates every transaction via RPC instead of submitting to the network,
+   * returning would-be outcomes without on-chain execution or sequence consumption.
+   */
+  dryRun?: boolean;
 }
 
 const DEFAULT_SUBMIT_POLL_INTERVAL_MS = 1_000;
@@ -522,6 +527,29 @@ export async function submitBatch(
         firstFailureIndex = built.index;
         continue;
       }
+    }
+
+    // Dry-run mode: simulate without submitting to network
+    if (options.dryRun) {
+      let sim: SorobanRpc.Api.SimulateTransactionResponse;
+      try {
+        const tx = new Transaction(xdrToSubmit, options.networkPassphrase ?? '');
+        sim = await server.simulateTransaction(tx);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        pushOutcome({ index: built.index, method: built.method, status: 'ERROR', error: `Simulation failed: ${msg}` });
+        firstFailureIndex = built.index;
+        continue;
+      }
+
+      if (SorobanRpc.Api.isSimulationError(sim)) {
+        pushOutcome({ index: built.index, method: built.method, status: 'FAILED', error: sim.error });
+        firstFailureIndex = built.index;
+        continue;
+      }
+
+      pushOutcome({ index: built.index, method: built.method, status: 'SUCCESS' });
+      continue;
     }
 
     // Submit.
