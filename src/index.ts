@@ -24,6 +24,7 @@ export type {
   BatchSubmitOptions,
 } from './batch-tx.js';
 export { GraphQLIndexer, DEFAULT_INDEXER_TIMEOUT_MS } from './indexer.js';
+export { createMockIndexer, type MockIndexerConfig, type MockResponse } from './mock-indexer.js';
 export type {
   GraphQLQueryOptions,
   GraphQLSubscriptionOptions,
