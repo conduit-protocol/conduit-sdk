@@ -151,12 +151,12 @@ describe('StreamBuilder address validation', () => {
 
   it('should reject invalid token address', () => {
     const builder = new StreamBuilder();
-    expect(() => builder.token('not-a-valid-contract')).toThrow(/C-address/);
+    expect(() => builder.token('not-a-valid-contract').build()).toThrow(/C-address/);
   });
 
   it('should reject empty token address', () => {
     const builder = new StreamBuilder();
-    expect(() => builder.token('')).toThrow(/non-empty/);
+    expect(() => builder.token('').build()).toThrow(/non-empty/);
   });
 
   it('should accept valid sender (G-address)', () => {
@@ -166,7 +166,7 @@ describe('StreamBuilder address validation', () => {
 
   it('should reject invalid sender address', () => {
     const builder = new StreamBuilder();
-    expect(() => builder.sender('not-a-valid-sender')).toThrow(/public key/);
+    expect(() => builder.sender('not-a-valid-sender').build()).toThrow(/public key/);
   });
 
   it('should accept valid recipient (G-address)', () => {
@@ -176,6 +176,6 @@ describe('StreamBuilder address validation', () => {
 
   it('should reject invalid recipient address', () => {
     const builder = new StreamBuilder();
-    expect(() => builder.recipient('not-a-valid-recipient')).toThrow(/public key/);
+    expect(() => builder.recipient('not-a-valid-recipient').build()).toThrow(/public key/);
   });
 });

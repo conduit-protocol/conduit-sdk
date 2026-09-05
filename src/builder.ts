@@ -7,7 +7,7 @@ import {
   paramToScVal,
   validateContext,
 } from './batch-tx.js';
-import { OperationAbortedError } from './errors.js';
+import { OperationAbortedError, ValidationError, type ValidationIssue } from './errors.js';
 import type { BatchTransactionContext, BuiltBatchTransaction, ScValType } from './batch-tx.js';
 
 export interface SubmitOptions {
@@ -78,7 +78,7 @@ export class StreamBuilder {
    * @returns The builder instance for chaining.
    */
   token(address: string): this {
-    this._token = StreamBuilder._validateAddress(address, 'token');
+    this._token = address;
     return this;
   }
 
@@ -88,7 +88,7 @@ export class StreamBuilder {
    * @returns The builder instance for chaining.
    */
   sender(address: string): this {
-    this._sender = StreamBuilder._validateAddress(address, 'sender');
+    this._sender = address;
     return this;
   }
 
@@ -98,7 +98,7 @@ export class StreamBuilder {
    * @returns The builder instance for chaining.
    */
   recipient(address: string): this {
-    this._recipient = StreamBuilder._validateAddress(address, 'recipient');
+    this._recipient = address;
     return this;
   }
 
@@ -111,15 +111,6 @@ export class StreamBuilder {
    * @returns The builder instance for chaining.
    */
   amount(val: number | bigint): this {
-    if (typeof val === 'bigint') {
-      if (val <= 0n) {
-        throw new Error('Invalid StreamBuilder parameter: amount must be a positive value');
-      }
-    } else {
-      if (!Number.isFinite(val) || val <= 0) {
-        throw new Error('Invalid StreamBuilder parameter: amount must be a positive finite number');
-      }
-    }
     this._amount = val;
     return this;
   }
@@ -133,15 +124,6 @@ export class StreamBuilder {
    * @returns The builder instance for chaining.
    */
   ratePerSecond(val: number | bigint): this {
-    if (typeof val === 'bigint') {
-      if (val <= 0n) {
-        throw new Error('Invalid StreamBuilder parameter: ratePerSecond must be a positive value');
-      }
-    } else {
-      if (!Number.isFinite(val) || val <= 0) {
-        throw new Error('Invalid StreamBuilder parameter: ratePerSecond must be a positive finite number');
-      }
-    }
     this._ratePerSecond = val;
     return this;
   }
@@ -154,13 +136,6 @@ export class StreamBuilder {
    * @returns The builder instance for chaining.
    */
   startTime(val: number): this {
-    if (!Number.isInteger(val) || val < 0) {
-      throw new Error('Invalid StreamBuilder parameter: startTime must be a non-negative integer Unix timestamp');
-    }
-    const now = Math.floor(Date.now() / 1000);
-    if (val < now) {
-      throw new Error('Invalid StreamBuilder parameter: startTime cannot be in the past');
-    }
     this._startTime = val;
     return this;
   }
@@ -173,9 +148,6 @@ export class StreamBuilder {
    * @returns The builder instance for chaining.
    */
   endTime(val: number): this {
-    if (!Number.isInteger(val) || val < 0) {
-      throw new Error('Invalid StreamBuilder parameter: endTime must be a non-negative integer Unix timestamp');
-    }
     this._endTime = val;
     return this;
   }
@@ -187,11 +159,118 @@ export class StreamBuilder {
    * @returns The builder instance for chaining.
    */
   clawbackEnabled(val: boolean): this {
-    if (typeof val !== 'boolean') {
-      throw new Error('Invalid StreamBuilder parameter: clawbackEnabled must be a boolean');
-    }
     this._clawbackEnabled = val;
     return this;
+  }
+
+  /**
+   * Validates all configured builder fields and returns an array of any
+   * issues found. Returns an empty array if all fields are valid.
+   *
+   * Unlike {@link build}, this does not throw.
+   */
+  validate(): ValidationIssue[] {
+    const issues: ValidationIssue[] = [];
+
+    // token
+    if (this._token === undefined) {
+      issues.push({ field: 'token', message: 'Missing required parameter: token' });
+    } else if (typeof this._token !== 'string' || this._token.trim().length === 0) {
+      issues.push({ field: 'token', message: 'Invalid StreamBuilder parameter: token must be a non-empty string' });
+    } else if (!StrKey.isValidContract(this._token)) {
+      issues.push({
+        field: 'token',
+        message: `Invalid StreamBuilder parameter: token must be a valid Soroban contract ID (C-address), got "${this._token}"`,
+      });
+    }
+
+    // sender
+    if (this._sender === undefined) {
+      issues.push({ field: 'sender', message: 'Missing required parameter: sender' });
+    } else if (typeof this._sender !== 'string' || this._sender.trim().length === 0) {
+      issues.push({ field: 'sender', message: 'Invalid StreamBuilder parameter: sender must be a non-empty string' });
+    } else if (!StrKey.isValidEd25519PublicKey(this._sender) && !StrKey.isValidContract(this._sender)) {
+      issues.push({
+        field: 'sender',
+        message: `Invalid StreamBuilder parameter: sender must be a valid Stellar public key or contract address (G-address or C-address), got "${this._sender}"`,
+      });
+    }
+
+    // recipient
+    if (this._recipient === undefined) {
+      issues.push({ field: 'recipient', message: 'Missing required parameter: recipient' });
+    } else if (typeof this._recipient !== 'string' || this._recipient.trim().length === 0) {
+      issues.push({ field: 'recipient', message: 'Invalid StreamBuilder parameter: recipient must be a non-empty string' });
+    } else if (!StrKey.isValidEd25519PublicKey(this._recipient) && !StrKey.isValidContract(this._recipient)) {
+      issues.push({
+        field: 'recipient',
+        message: `Invalid StreamBuilder parameter: recipient must be a valid Stellar public key or contract address (G-address or C-address), got "${this._recipient}"`,
+      });
+    }
+
+    // amount
+    if (this._amount === undefined) {
+      issues.push({ field: 'amount', message: 'Missing required parameter: amount' });
+    } else if (typeof this._amount === 'bigint') {
+      if (this._amount <= 0n) {
+        issues.push({ field: 'amount', message: 'Invalid StreamBuilder parameter: amount must be a positive value' });
+      }
+    } else if (typeof this._amount === 'number') {
+      if (!Number.isFinite(this._amount) || this._amount <= 0) {
+        issues.push({ field: 'amount', message: 'Invalid StreamBuilder parameter: amount must be a positive finite number' });
+      }
+    } else {
+      issues.push({ field: 'amount', message: 'Invalid StreamBuilder parameter: amount must be a positive finite number' });
+    }
+
+    // ratePerSecond (optional)
+    if (this._ratePerSecond !== undefined && this._ratePerSecond !== null) {
+      if (typeof this._ratePerSecond === 'bigint') {
+        if (this._ratePerSecond <= 0n) {
+          issues.push({ field: 'ratePerSecond', message: 'Invalid StreamBuilder parameter: ratePerSecond must be a positive value' });
+        }
+      } else if (typeof this._ratePerSecond === 'number') {
+        if (!Number.isFinite(this._ratePerSecond) || this._ratePerSecond <= 0) {
+          issues.push({ field: 'ratePerSecond', message: 'Invalid StreamBuilder parameter: ratePerSecond must be a positive finite number' });
+        }
+      } else {
+        issues.push({ field: 'ratePerSecond', message: 'Invalid StreamBuilder parameter: ratePerSecond must be a positive number or bigint' });
+      }
+    }
+
+    // startTime (optional)
+    if (this._startTime !== undefined && this._startTime !== null) {
+      if (typeof this._startTime !== 'number' || !Number.isInteger(this._startTime) || this._startTime < 0) {
+        issues.push({ field: 'startTime', message: 'Invalid StreamBuilder parameter: startTime must be a non-negative integer Unix timestamp' });
+      } else {
+        const now = Math.floor(Date.now() / 1000);
+        if (this._startTime < now) {
+          issues.push({ field: 'startTime', message: 'Invalid StreamBuilder parameter: startTime cannot be in the past' });
+        }
+      }
+    }
+
+    // endTime (optional)
+    if (this._endTime !== undefined && this._endTime !== null) {
+      if (typeof this._endTime !== 'number' || !Number.isInteger(this._endTime) || this._endTime < 0) {
+        issues.push({ field: 'endTime', message: 'Invalid StreamBuilder parameter: endTime must be a non-negative integer Unix timestamp' });
+      } else if (
+        typeof this._startTime === 'number' &&
+        this._endTime > 0 &&
+        this._endTime <= this._startTime
+      ) {
+        issues.push({ field: 'endTime', message: 'Invalid StreamBuilder parameter: endTime must be greater than startTime' });
+      }
+    }
+
+    // clawbackEnabled (optional)
+    if (this._clawbackEnabled !== undefined && this._clawbackEnabled !== null) {
+      if (typeof this._clawbackEnabled !== 'boolean') {
+        issues.push({ field: 'clawbackEnabled', message: 'Invalid StreamBuilder parameter: clawbackEnabled must be a boolean' });
+      }
+    }
+
+    return issues;
   }
 
   /**
@@ -199,23 +278,37 @@ export class StreamBuilder {
    * Any bigint fields are converted to strings to guarantee safe
    * serialisation across all browsers (Safari/WebKit included).
    * @returns An object containing `token`, `sender`, `recipient`, `amount`, and optionally `ratePerSecond`.
-   * @throws {Error} If any required field (`token`, `sender`, `recipient`, `amount`) is missing or malformed.
+   * @throws {ValidationError} If any field is missing or malformed, collecting all issues in `error.issues`.
+   * @throws {Error} If the builder has been destroyed.
    */
   build() {
     if (this.isDestroyed) {
       throw new Error('StreamBuilder has been destroyed');
     }
-    if (this._token === undefined || this._token === null ||
-        this._sender === undefined || this._sender === null ||
-        this._recipient === undefined || this._recipient === null ||
-        this._amount === undefined || this._amount === null) {
-      throw new Error('Missing required parameters for StreamBuilder');
+
+    const issues = this.validate();
+    if (issues.length > 0) {
+      const missingFields = issues
+        .filter((i) => i.message.startsWith('Missing required parameter'))
+        .map((i) => i.field);
+      const invalidIssues = issues.filter((i) => !i.message.startsWith('Missing required parameter'));
+
+      let summary = '';
+      if (missingFields.length > 0 && invalidIssues.length === 0) {
+        summary = `Missing required parameters for StreamBuilder: ${missingFields.join(', ')}`;
+      } else if (invalidIssues.length > 0 && missingFields.length === 0) {
+        summary = `Invalid StreamBuilder parameter: ${invalidIssues.map((i) => i.message).join('; ')}`;
+      } else {
+        summary = `Missing required parameters for StreamBuilder: ${missingFields.join(', ')}; Invalid StreamBuilder parameter: ${invalidIssues.map((i) => i.message).join('; ')}`;
+      }
+
+      throw new ValidationError(issues, summary);
     }
 
     const config: Record<string, unknown> = {
-      token: this._token,
-      sender: this._sender,
-      recipient: this._recipient,
+      token: this._token as string,
+      sender: this._sender as string,
+      recipient: this._recipient as string,
       // Coerce to string regardless of input type: build()'s return type
       // promises `amount: string`, and ConduitBatcher's payload validation
       // rejects a raw `number` (a float-precision hazard for token amounts).
@@ -270,7 +363,14 @@ export class StreamBuilder {
   toContractArgs(): unknown[] {
     const config = this.build();
     if (this._ratePerSecond === undefined || this._ratePerSecond === null) {
-      throw new Error(
+      throw new ValidationError(
+        [
+          {
+            field: 'ratePerSecond',
+            message:
+              'Invalid StreamBuilder parameter: ratePerSecond is required to build create_stream contract arguments',
+          },
+        ],
         'Invalid StreamBuilder parameter: ratePerSecond is required to build create_stream contract arguments',
       );
     }
@@ -411,29 +511,6 @@ export class StreamBuilder {
     }
     this.activeTimers.clear();
     this.pendingQueue = [];
-  }
-
-  private static _validateAddress(address: string, field: string): string {
-    if (typeof address !== 'string' || address.trim().length === 0) {
-      throw new Error(`Invalid StreamBuilder parameter: ${field} must be a non-empty string`);
-    }
-
-    if (field === 'token') {
-      if (!StrKey.isValidContract(address)) {
-        throw new Error(
-          `Invalid StreamBuilder parameter: ${field} must be a valid Soroban contract ID (C-address), got "${address}"`,
-        );
-      }
-    } else {
-      // sender / recipient — must be valid Stellar addresses (G-address or C-address)
-      if (!StrKey.isValidEd25519PublicKey(address) && !StrKey.isValidContract(address)) {
-        throw new Error(
-          `Invalid StreamBuilder parameter: ${field} must be a valid Stellar public key or contract address (G-address or C-address), got "${address}"`,
-        );
-      }
-    }
-
-    return address;
   }
 }
 
