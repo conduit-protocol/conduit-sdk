@@ -40,7 +40,8 @@ import {
   BASE_FEE,
 } from '@stellar/stellar-sdk';
 import { NETWORK_PASSPHRASE, createRpcServer } from './soroban.js';
-import { RateLimitError } from './errors.js';
+import { RateLimitError, BatchPartiallySubmittedError } from './errors.js';
+export { BatchPartiallySubmittedError } from './errors.js';
 import type { Network } from './types/index.js';
 
 export const DEFAULT_BATCH_TIMEOUT_SECONDS = 30;
@@ -433,6 +434,11 @@ export interface BatchSubmitOptions {
    * terminal state (SUCCESS, FAILED, SKIPPED, or ERROR).
    */
   onProgress?: (progress: { index: number; method: string; status: BatchTxStatus }) => void;
+  /**
+   * If true, throws a typed BatchPartiallySubmittedError carrying firstFailureIndex
+   * and skippedIndices when a transaction in the batch fails or is skipped.
+   */
+  throwOnPartial?: boolean;
 }
 
 const DEFAULT_SUBMIT_POLL_INTERVAL_MS = 1_000;
@@ -588,6 +594,13 @@ export async function submitBatch(
       pushOutcome({ index: built.index, method: built.method, status: 'ERROR', error: `Transaction timed out after ${maxPollAttempts} poll attempts: ${hash}` });
       firstFailureIndex = built.index;
     }
+  }
+
+  if (options.throwOnPartial && firstFailureIndex !== -1) {
+    const skippedIndices = outcomes
+      .filter(o => o.status === 'SKIPPED')
+      .map(o => o.index);
+    throw new BatchPartiallySubmittedError(firstFailureIndex, skippedIndices, outcomes);
   }
 
   return {

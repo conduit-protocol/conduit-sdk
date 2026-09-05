@@ -490,6 +490,31 @@ export class OperationAbortedError extends Error {
   }
 }
 
+/**
+ * Error thrown or exposed when a sequential batch submission encounters a mid-batch failure.
+ * Carries the index of the first failed transaction, the indices of subsequent
+ * skipped transactions, and all completed/skipped outcomes.
+ */
+export class BatchPartiallySubmittedError extends Error {
+  public readonly firstFailureIndex: number;
+  public readonly skippedIndices: number[];
+  public readonly outcomes: unknown[];
+
+  constructor(
+    firstFailureIndex: number,
+    skippedIndices: number[],
+    outcomes: unknown[] = [],
+  ) {
+    super(
+      `Batch partially submitted: transaction at index ${firstFailureIndex} failed; skipped subsequent index(es): [${skippedIndices.join(', ')}]`,
+    );
+    this.name = 'BatchPartiallySubmittedError';
+    this.firstFailureIndex = firstFailureIndex;
+    this.skippedIndices = skippedIndices;
+    this.outcomes = outcomes;
+  }
+}
+
 // ── Type guard ────────────────────────────────────────────────────────────────
 
 /**
@@ -506,6 +531,7 @@ export class OperationAbortedError extends Error {
  * - {@link RpcServiceUnavailableError}
  * - {@link IndexerTimeoutError}
  * - {@link OperationAbortedError}
+ * - {@link BatchPartiallySubmittedError}
  */
 export function isConduitError(value: unknown): value is Error {
   if (!(value instanceof Error)) return false;
@@ -518,5 +544,6 @@ export function isConduitError(value: unknown): value is Error {
     'RpcServiceUnavailableError',
     'IndexerTimeoutError',
     'OperationAbortedError',
+    'BatchPartiallySubmittedError',
   ].includes(value.name);
 }
