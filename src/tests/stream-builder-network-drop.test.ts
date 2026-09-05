@@ -16,7 +16,7 @@ describe('StreamBuilder Network Interruption & Payload Queueing Regression Tests
     expect(() => builder.build()).toThrow('Missing required parameters for StreamBuilder');
 
     const nullTokenBuilder = new StreamBuilder();
-    expect(() => nullTokenBuilder.token(null as any)).toThrow(
+    expect(() => nullTokenBuilder.token(null as any).build()).toThrow(
       'Invalid StreamBuilder parameter: token must be a non-empty string'
     );
   });

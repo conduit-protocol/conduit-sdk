@@ -103,16 +103,16 @@ describe('StreamBuilder.toContractArgs()', () => {
   });
 
   it('rejects a startTime in the past', () => {
-    expect(() => baseBuilder().startTime(1)).toThrow('startTime cannot be in the past');
+    expect(() => baseBuilder().startTime(1).build()).toThrow('startTime cannot be in the past');
   });
 
   it('rejects a non-integer endTime', () => {
-    expect(() => baseBuilder().endTime(1.5)).toThrow('endTime must be a non-negative integer');
+    expect(() => baseBuilder().endTime(1.5).build()).toThrow('endTime must be a non-negative integer');
   });
 
   it('rejects a non-boolean clawbackEnabled', () => {
     const builder = baseBuilder();
-    expect(() => builder.clawbackEnabled('yes' as unknown as boolean)).toThrow('clawbackEnabled must be a boolean');
+    expect(() => builder.clawbackEnabled('yes' as unknown as boolean).build()).toThrow('clawbackEnabled must be a boolean');
   });
 });
 

@@ -490,6 +490,54 @@ export class OperationAbortedError extends Error {
   }
 }
 
+// ── Validation error (#631) ───────────────────────────────────────────────────
+
+export interface ValidationIssue {
+  /** The field that failed validation (e.g. 'token', 'sender', 'recipient', 'amount'). */
+  field?: string;
+  /** Human-readable explanation of why validation failed. */
+  message: string;
+}
+
+/**
+ * Thrown when validation fails across one or more builder or payload fields.
+ * Aggregates all detected problems into a `.issues[]` array rather than halting
+ * on the first invalid field.
+ *
+ * @example
+ * ```ts
+ * try {
+ *   new StreamBuilder().token('bad').sender('bad').build();
+ * } catch (err) {
+ *   if (err instanceof ValidationError) {
+ *     console.error(err.issues); // [{ field: 'token', ... }, { field: 'sender', ... }]
+ *   }
+ * }
+ * ```
+ */
+export class ValidationError extends Error {
+  /** The list of all validation issues detected. */
+  readonly issues: readonly ValidationIssue[];
+
+  constructor(issues: (ValidationIssue | string)[], message?: string) {
+    const normalizedIssues: ValidationIssue[] = issues.map((issue) =>
+      typeof issue === 'string' ? { message: issue } : issue,
+    );
+    const summary =
+      message ??
+      (normalizedIssues.length === 1
+        ? normalizedIssues[0]!.message
+        : `Validation failed with ${normalizedIssues.length} issues:\n` +
+          normalizedIssues
+            .map((i) => ` - ${i.field ? `[${i.field}] ` : ''}${i.message}`)
+            .join('\n'));
+    super(summary);
+    this.name = 'ValidationError';
+    this.issues = normalizedIssues;
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
+
 // ── Type guard ────────────────────────────────────────────────────────────────
 
 /**
@@ -506,6 +554,7 @@ export class OperationAbortedError extends Error {
  * - {@link RpcServiceUnavailableError}
  * - {@link IndexerTimeoutError}
  * - {@link OperationAbortedError}
+ * - {@link ValidationError}
  */
 export function isConduitError(value: unknown): value is Error {
   if (!(value instanceof Error)) return false;
@@ -518,5 +567,7 @@ export function isConduitError(value: unknown): value is Error {
     'RpcServiceUnavailableError',
     'IndexerTimeoutError',
     'OperationAbortedError',
+    'ValidationError',
   ].includes(value.name);
 }
+

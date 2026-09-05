@@ -139,7 +139,8 @@ describe('StreamBuilder', () => {
         .sender('GAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQDZ7H')
         .recipient('GABAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEJXA')
         .amount(1000)
-        .ratePerSecond(0);
+        .ratePerSecond(0)
+        .build();
 
     expect(builder).toThrow('Invalid StreamBuilder parameter: ratePerSecond');
 
@@ -149,7 +150,8 @@ describe('StreamBuilder', () => {
         .sender('GAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQDZ7H')
         .recipient('GABAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEJXA')
         .amount(1000)
-        .ratePerSecond(-1n);
+        .ratePerSecond(-1n)
+        .build();
 
     expect(builderNeg).toThrow('Invalid StreamBuilder parameter: ratePerSecond');
   });
