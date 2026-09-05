@@ -1068,7 +1068,16 @@ function parseStreamInfo(id: bigint, address: string, val: xdr.ScVal): StreamInf
   // (see contracts/stream/src/storage.rs). Reading `m['paused']` etc. always
   // yields `undefined`; derive the booleans by masking `flags`, mirroring
   // `StreamInfo::is_paused()` / `is_cancelled()` / `is_clawback_enabled()`.
-  const flags = m['flags'] ? scValToU32(m['flags']) : 0;
+  // Defensive: if `flags` is present but not a U32 ScVal (wrong type from a
+  // contract upgrade or malformed data), fall back to 0 instead of throwing.
+  let flags = 0;
+  if (m['flags']) {
+    try {
+      flags = scValToU32(m['flags']);
+    } catch {
+      flags = 0;
+    }
+  }
 
   const info: StreamInfo = {
     id,
