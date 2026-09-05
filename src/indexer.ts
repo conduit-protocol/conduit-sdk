@@ -122,7 +122,29 @@ export class GraphQLIndexer {
     this.endpoint = endpoint;
   }
 
-  async query(options: GraphQLQueryOptions): Promise<unknown> {
+  /**
+   * Issues a single GraphQL query as an HTTP POST and returns the unwrapped data payload.
+   *
+   * **Return Contract (Unwrapped Data)**:
+   * Unlike raw GraphQL HTTP clients that return the `{ data, errors }` envelope,
+   * `GraphQLIndexer.query()` automatically unwraps the payload and returns `body.data`
+   * directly. If the GraphQL endpoint returns any errors in `errors[]`, `query()`
+   * aggregates them and throws a {@link ConduitError}.
+   *
+   * Supply the generic type parameter `<T = unknown>` to strongly type the returned data:
+   * ```typescript
+   * interface StreamCountResponse {
+   *   streamCount: number;
+   * }
+   * const data = await indexer.query<StreamCountResponse>({ query: 'query { streamCount }' });
+   * console.log(data.streamCount);
+   * ```
+   *
+   * @template T The expected type of the unwrapped `data` payload (defaults to `unknown`).
+   * @param options Query configuration including query string, variables, headers, timeoutMs, and signal.
+   * @returns The unwrapped `body.data` payload typed as `T`.
+   */
+  async query<T = unknown>(options: GraphQLQueryOptions): Promise<T> {
     if (this.isDestroyed) {
       throw new Error('GraphQLIndexer has been destroyed');
     }
@@ -188,7 +210,7 @@ export class GraphQLIndexer {
       throw new ConduitError('stream', UNKNOWN_CONTRACT_ERROR_CODE, messages.join('; '));
     }
 
-    return body?.data;
+    return (body?.data) as T;
   }
 
   /**
