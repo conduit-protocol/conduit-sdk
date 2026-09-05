@@ -26,6 +26,15 @@ import { SUPPORTED_NETWORKS, UnsupportedChainError } from './errors.js';
  */
 const NEGATIVE_ADDRESS_CACHE_TTL_MS = 30_000;
 
+/**
+ * Metrics tracking hit/miss counters and current cache size for the factory address cache.
+ */
+export interface CacheMetrics {
+  hits: number;
+  misses: number;
+  size: number;
+}
+
 export class FactoryModule {
   private readonly rpcUrl:      string;
   private readonly passphrase:  string;
@@ -52,6 +61,9 @@ export class FactoryModule {
   // stream_address simulation for each of them on every refresh (#568).
   private readonly addressCache = new Map<string, string | null>();
   private readonly negativeCacheExpiry = new Map<string, number>();
+
+  private _addressCacheHits = 0;
+  private _addressCacheMisses = 0;
 
   constructor(private readonly config: ConduitConfig) {
     // Guard against direct construction with an unsupported network, which
@@ -130,6 +142,21 @@ export class FactoryModule {
     this.negativeCacheExpiry.clear();
   }
 
+  /** Returns hit, miss, and size metrics for the address cache. */
+  getAddressCacheMetrics(): CacheMetrics {
+    return {
+      hits: this._addressCacheHits,
+      misses: this._addressCacheMisses,
+      size: this.addressCache.size,
+    };
+  }
+
+  /** Reset address cache hit/miss metric counters without clearing cache entries. */
+  resetAddressCacheMetrics(): void {
+    this._addressCacheHits = 0;
+    this._addressCacheMisses = 0;
+  }
+
   /** Total number of streams ever created through this factory. */
   async streamCount(): Promise<bigint> {
     const caller = await this._resolveCallerAddress();
@@ -148,13 +175,21 @@ export class FactoryModule {
 
     const cached = this.addressCache.get(key);
     if (cached !== undefined) {
-      if (cached !== null) return cached;
+      if (cached !== null) {
+        this._addressCacheHits++;
+        return cached;
+      }
       // Negative hit — honour it only while its TTL is live (#568).
       const expiresAt = this.negativeCacheExpiry.get(key) ?? 0;
-      if (Date.now() < expiresAt) return null;
+      if (Date.now() < expiresAt) {
+        this._addressCacheHits++;
+        return null;
+      }
       this.addressCache.delete(key);
       this.negativeCacheExpiry.delete(key);
     }
+
+    this._addressCacheMisses++;
 
     const caller = await this._resolveCallerAddress();
     const tx  = await buildContractCallTx(

@@ -48,7 +48,7 @@ import {
 } from './constants.js';
 import { buildBatchTransactions } from './batch-tx.js';
 import type { BatchTransactionContext } from './batch-tx.js';
-import { FactoryModule } from './factory.js';
+import { FactoryModule, type CacheMetrics } from './factory.js';
 import { ConduitError, RateLimitError, InsufficientBalanceError, StreamErrorCode } from './errors.js';
 
 // Deprecation warnings
@@ -895,6 +895,16 @@ export class StreamsModule {
   /** Clear the address cache. Useful for testing or manual memory management. */
   clearAddressCache(): void {
     this._factory.clearAddressCache();
+  }
+
+  /** Expose address cache hit/miss metrics from the underlying factory module. */
+  getAddressCacheMetrics(): CacheMetrics {
+    return this._factory.getAddressCacheMetrics();
+  }
+
+  /** Reset address cache hit/miss metric counters. */
+  resetAddressCacheMetrics(): void {
+    this._factory.resetAddressCacheMetrics();
   }
 
   /** Synchronous subscribe - resolves address lazily on first poll tick. */

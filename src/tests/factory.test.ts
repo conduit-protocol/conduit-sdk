@@ -295,3 +295,73 @@ describe('FactoryModule — streamsBySender() / streamsByRecipient()', () => {
     expect(args[2]!.u32()).toBe(50);
   });
 });
+
+describe('FactoryModule — addressCache metrics (#611)', () => {
+  it('tracks initial metrics as zero', async () => {
+    const { FactoryModule } = await import('../factory.js');
+    const factory = new FactoryModule(cfg());
+    expect(factory.getAddressCacheMetrics()).toEqual({ hits: 0, misses: 0, size: 0 });
+  });
+
+  it('increments misses on first resolution and hits on subsequent calls', async () => {
+    const { FactoryModule } = await import('../factory.js');
+    mockSimulate.mockResolvedValue(makeU32ScVal(1));
+    const factory = new FactoryModule(cfg());
+
+    await factory.streamAddress(1n);
+    expect(factory.getAddressCacheMetrics()).toEqual({ hits: 0, misses: 1, size: 1 });
+
+    await factory.streamAddress(1n);
+    expect(factory.getAddressCacheMetrics()).toEqual({ hits: 1, misses: 1, size: 1 });
+
+    await factory.streamAddress('1');
+    expect(factory.getAddressCacheMetrics()).toEqual({ hits: 2, misses: 1, size: 1 });
+
+    await factory.streamAddress(2n);
+    expect(factory.getAddressCacheMetrics()).toEqual({ hits: 2, misses: 2, size: 2 });
+  });
+
+  it('tracks negative cache hits and misses', async () => {
+    const { FactoryModule } = await import('../factory.js');
+    mockSimulate.mockResolvedValue(makeVoidScVal());
+    const factory = new FactoryModule(cfg());
+
+    const first = await factory.streamAddress(99n);
+    expect(first).toBeNull();
+    expect(factory.getAddressCacheMetrics()).toEqual({ hits: 0, misses: 1, size: 1 });
+
+    const second = await factory.streamAddress(99n);
+    expect(second).toBeNull();
+    expect(factory.getAddressCacheMetrics()).toEqual({ hits: 1, misses: 1, size: 1 });
+  });
+
+  it('resets hit/miss counters with resetAddressCacheMetrics without clearing cache size', async () => {
+    const { FactoryModule } = await import('../factory.js');
+    mockSimulate.mockResolvedValue(makeU32ScVal(1));
+    const factory = new FactoryModule(cfg());
+
+    await factory.streamAddress(10n);
+    await factory.streamAddress(10n);
+    expect(factory.getAddressCacheMetrics()).toEqual({ hits: 1, misses: 1, size: 1 });
+
+    factory.resetAddressCacheMetrics();
+    expect(factory.getAddressCacheMetrics()).toEqual({ hits: 0, misses: 0, size: 1 });
+
+    // Cache entry is still preserved
+    await factory.streamAddress(10n);
+    expect(factory.getAddressCacheMetrics()).toEqual({ hits: 1, misses: 0, size: 1 });
+  });
+
+  it('clearAddressCache empties cache size', async () => {
+    const { FactoryModule } = await import('../factory.js');
+    mockSimulate.mockResolvedValue(makeU32ScVal(1));
+    const factory = new FactoryModule(cfg());
+
+    await factory.streamAddress(1n);
+    await factory.streamAddress(2n);
+    expect(factory.getAddressCacheMetrics().size).toBe(2);
+
+    factory.clearAddressCache();
+    expect(factory.getAddressCacheMetrics().size).toBe(0);
+  });
+});

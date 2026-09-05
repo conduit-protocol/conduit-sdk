@@ -52,6 +52,8 @@ export type { ConduitContract } from './errors.js';
 export * from './types/index.js';
 export type { GetStreamInfosOptions, GetStreamInfosResult, GetStreamInfosFailure } from './types/index.js';
 export * from './adapters/index.js';
+export { FactoryModule } from './factory.js';
+export type { CacheMetrics } from './factory.js';
 export { FeeEstimator } from './fee-estimator.js';
 export type { FeeEstimateOptions } from './fee-estimator.js';
 export { WebSocketRelayer } from './relayer/WebSocketRelayer.js';
