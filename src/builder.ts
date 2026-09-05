@@ -7,7 +7,7 @@ import {
   paramToScVal,
   validateContext,
 } from './batch-tx.js';
-import { OperationAbortedError } from './errors.js';
+import { OperationAbortedError, ValidationError } from './errors.js';
 import type { BatchTransactionContext, BuiltBatchTransaction, ScValType } from './batch-tx.js';
 
 export interface SubmitOptions {
@@ -50,19 +50,6 @@ class Semaphore {
   }
 }
 
-
-/**
- * Aggregated validation error carrying all issues found during build().
- */
-export class ValidationError extends Error {
-  readonly issues: string[];
-
-  constructor(issues: string[]) {
-    super(`Validation failed with ${issues.length} issue(s): ${issues.join('; ')}`);
-    this.name = 'ValidationError';
-    this.issues = issues;
-  }
-}
 /** Fluent builder for constructing stream configurations. */
 export class StreamBuilder {
   private _token?: string | undefined;
@@ -214,11 +201,14 @@ export class StreamBuilder {
    * @returns An object containing `token`, `sender`, `recipient`, `amount`, and optionally `ratePerSecond`.
    * @throws {Error} If any required field (`token`, `sender`, `recipient`, `amount`) is missing or malformed.
    */
-  build() {
-    if (this.isDestroyed) {
-      throw new Error('StreamBuilder has been destroyed');
-    }
+  /**
+   * Collects every validation problem with the current builder state
+   * without mutating anything. Returns an array of human-readable issue
+   * strings; an empty array means the builder is valid.
+   */
+  validate(): string[] {
     const issues: string[] = [];
+
     if (this._token === undefined || this._token === null) {
       issues.push('token is required');
     }
@@ -231,6 +221,15 @@ export class StreamBuilder {
     if (this._amount === undefined || this._amount === null) {
       issues.push('amount is required');
     }
+
+    return issues;
+  }
+
+  build() {
+    if (this.isDestroyed) {
+      throw new Error('StreamBuilder has been destroyed');
+    }
+    const issues = this.validate();
     if (issues.length > 0) {
       throw new ValidationError(issues);
     }
