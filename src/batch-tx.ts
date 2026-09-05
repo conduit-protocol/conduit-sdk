@@ -403,6 +403,30 @@ export interface BatchSubmitResult {
   outcomes: BatchTxOutcome[];
 }
 
+/**
+ * Typed error thrown when a batch submission has a mid-batch failure.
+ * Carries the index of the first failing transaction and the indices of
+ * all transactions that were skipped as a result.
+ */
+export class BatchPartiallySubmittedError extends Error {
+  readonly firstFailureIndex: number;
+  readonly skippedIndices: number[];
+  readonly result: BatchSubmitResult;
+
+  constructor(result: BatchSubmitResult) {
+    super(
+      `Batch submission failed at transaction ${result.firstFailureIndex}. ` +
+      `${result.outcomes.filter(o => o.status === 'SKIPPED').length} transaction(s) skipped.`,
+    );
+    this.name = 'BatchPartiallySubmittedError';
+    this.firstFailureIndex = result.firstFailureIndex;
+    this.skippedIndices = result.outcomes
+      .filter(o => o.status === 'SKIPPED')
+      .map(o => o.index);
+    this.result = result;
+  }
+}
+
 export interface BatchSubmitOptions {
   /** Milliseconds to wait between confirmation polls. Default: 1 000 ms. */
   pollIntervalMs?: number;
@@ -433,6 +457,8 @@ export interface BatchSubmitOptions {
    * terminal state (SUCCESS, FAILED, SKIPPED, or ERROR).
    */
   onProgress?: (progress: { index: number; method: string; status: BatchTxStatus }) => void;
+  /** When true, throws BatchPartiallySubmittedError if any tx fails. Default false. */
+  throwOnError?: boolean;
 }
 
 const DEFAULT_SUBMIT_POLL_INTERVAL_MS = 1_000;
@@ -590,9 +616,15 @@ export async function submitBatch(
     }
   }
 
-  return {
+  const result = {
     allSucceeded:      firstFailureIndex === -1,
     firstFailureIndex,
     outcomes,
   };
+
+  if (options.throwOnError && !result.allSucceeded) {
+    throw new BatchPartiallySubmittedError(result);
+  }
+
+  return result;
 }

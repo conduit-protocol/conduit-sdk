@@ -12,6 +12,7 @@ export {
   buildBatchTransactions,
   buildBatchTransactionsSync,
   BatchBuildError,
+  BatchPartiallySubmittedError,
   submitBatch,
 } from './batch-tx.js';
 export type {
