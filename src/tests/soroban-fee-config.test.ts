@@ -35,7 +35,7 @@ beforeEach(() => {
   });
 });
 
-describe('resolveFee() (#509)', () => {
+describe('resolveFee() (#509, #606)', () => {
   it('defaults to BASE_FEE when neither fee nor feeMultiplier is set', () => {
     expect(resolveFee({})).toBe(BASE_FEE);
   });
@@ -46,6 +46,13 @@ describe('resolveFee() (#509)', () => {
 
   it('scales BASE_FEE by feeMultiplier', () => {
     expect(resolveFee({ feeMultiplier: 10 })).toBe((BigInt(BASE_FEE) * 10n).toString());
+  });
+
+  it('is re-exported from the package root entry point (#606)', async () => {
+    const entrypoint = await import('../index.js');
+    expect(typeof entrypoint.resolveFee).toBe('function');
+    expect(entrypoint.resolveFee).toBe(resolveFee);
+    expect(entrypoint.resolveFee({ fee: '7500' })).toBe('7500');
   });
 });
 
