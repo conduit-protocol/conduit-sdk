@@ -73,9 +73,10 @@ export {
   timeoutSignal,
 } from './utils.js';
 
-// RPC server lifecycle
-export { getServer, clearServerCache } from './soroban.js';
+// RPC server lifecycle & fee resolution
+export { getServer, clearServerCache, resolveFee } from './soroban.js';
 export { getTokenDecimals, clearTokenDecimalsCache } from './soroban.js';
+export { FactoryModule, DEFAULT_NEGATIVE_ADDRESS_CACHE_TTL_MS } from './factory.js';
 
 export {
   formatAddress,

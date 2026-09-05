@@ -50,6 +50,11 @@ export interface ConduitConfig {
    * Ignored when `fee` is set. Defaults to `1` (BASE_FEE, unchanged).
    */
   feeMultiplier?: number;
+  /**
+   * Negative cache TTL in milliseconds for null (not-found) streamAddress queries in FactoryModule.
+   * Defaults to 30,000 ms (30 seconds) (see #602).
+   */
+  negativeAddressCacheTtlMs?: number;
 }
 
 export interface StreamInfo {
