@@ -69,7 +69,7 @@ export {
 } from './utils.js';
 
 // RPC server lifecycle
-export { getServer, clearServerCache } from './soroban.js';
+export { getServer, clearServerCache, resolveFee } from './soroban.js';
 export { getTokenDecimals, clearTokenDecimalsCache } from './soroban.js';
 
 export {
