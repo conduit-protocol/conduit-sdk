@@ -428,6 +428,11 @@ export interface BatchSubmitOptions {
   sign?: (xdr: string) => Promise<string> | string;
   /** AbortSignal to cancel an in-progress submission. */
   signal?: AbortSignal;
+  /**
+   * When true, simulate every transaction instead of submitting it.
+   * Returns simulated outcomes without sending anything to the network.
+   */
+  dryRun?: boolean;
 }
 
 const DEFAULT_SUBMIT_POLL_INTERVAL_MS = 1_000;
@@ -469,6 +474,33 @@ export async function submitBatch(
 
   const outcomes: BatchTxOutcome[] = [];
   let firstFailureIndex = -1;
+
+  // Dry-run mode: simulate every transaction without submitting.
+  if (options.dryRun) {
+    for (const built of transactions) {
+      if (options.signal?.aborted) {
+        outcomes.push({ index: built.index, method: built.method, status: 'SKIPPED', error: 'Aborted' });
+        continue;
+      }
+      try {
+        const tx = new Transaction(built.xdr, options.networkPassphrase ?? '');
+        const simulation = await server.simulateTransaction(tx);
+        if (SorobanRpc.Api.isSimulationError(simulation)) {
+          outcomes.push({ index: built.index, method: built.method, status: 'FAILED', error: simulation.error });
+        } else {
+          outcomes.push({ index: built.index, method: built.method, status: 'SIMULATED' });
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        outcomes.push({ index: built.index, method: built.method, status: 'ERROR', error: msg });
+      }
+    }
+    return {
+      allSucceeded: outcomes.every((o) => o.status === 'SIMULATED'),
+      firstFailureIndex: outcomes.findIndex((o) => o.status === 'FAILED' || o.status === 'ERROR'),
+      outcomes,
+    };
+  }
 
   for (const built of transactions) {
     // Once a failure is recorded, mark all subsequent txs as SKIPPED.
