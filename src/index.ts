@@ -24,6 +24,8 @@ export type {
   BatchSubmitOptions,
 } from './batch-tx.js';
 export { GraphQLIndexer, DEFAULT_INDEXER_TIMEOUT_MS } from './indexer.js';
+export { MockGraphQLIndexer, createMockIndexer } from './mock-indexer.js';
+export type { MockQueryMap, MockSubscriptionMap, MockIndexerOptions } from './mock-indexer.js';
 export type {
   GraphQLQueryOptions,
   GraphQLSubscriptionOptions,
@@ -74,7 +76,7 @@ export {
 } from './utils.js';
 
 // RPC server lifecycle
-export { getServer, clearServerCache } from './soroban.js';
+export { getServer, clearServerCache, resolveFee } from './soroban.js';
 export { getTokenDecimals, clearTokenDecimalsCache } from './soroban.js';
 
 export {
