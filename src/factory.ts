@@ -131,7 +131,8 @@ export class FactoryModule {
   }
 
   /** Total number of streams ever created through this factory. */
-  async streamCount(): Promise<bigint> {
+  async streamCount(signal?: AbortSignal): Promise<bigint> {
+    if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
     const caller = await this._resolveCallerAddress();
     const tx  = await buildContractCallTx(
       this.rpcUrl, this.passphrase, caller,
@@ -142,9 +143,10 @@ export class FactoryModule {
   }
 
   /** Resolve a stream ID to its deployed contract address. Returns null if not found. */
-  async streamAddress(streamId: bigint | string): Promise<string | null> {
+  async streamAddress(streamId: bigint | string, signal?: AbortSignal): Promise<string | null> {
     const id  = BigInt(streamId);
     const key = id.toString();
+    if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
 
     const cached = this.addressCache.get(key);
     if (cached !== undefined) {
@@ -190,7 +192,8 @@ export class FactoryModule {
    * enforce this itself, so an out-of-range value is silently clamped rather
    * than sent through as-is (see #489).
    */
-  async streamsBySender(address: string, offset = 0, limit = DEFAULT_LIST_LIMIT): Promise<bigint[]> {
+  async streamsBySender(address: string, offset = 0, limit = DEFAULT_LIST_LIMIT, signal?: AbortSignal): Promise<bigint[]> {
+    if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
     const caller = await this._resolveCallerAddress();
     const tx  = await buildContractCallTx(
       this.rpcUrl, this.passphrase, caller,
@@ -211,7 +214,8 @@ export class FactoryModule {
    * enforce this itself, so an out-of-range value is silently clamped rather
    * than sent through as-is (see #489).
    */
-  async streamsByRecipient(address: string, offset = 0, limit = DEFAULT_LIST_LIMIT): Promise<bigint[]> {
+  async streamsByRecipient(address: string, offset = 0, limit = DEFAULT_LIST_LIMIT, signal?: AbortSignal): Promise<bigint[]> {
+    if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
     const caller = await this._resolveCallerAddress();
     const tx  = await buildContractCallTx(
       this.rpcUrl, this.passphrase, caller,
@@ -227,7 +231,8 @@ export class FactoryModule {
   }
 
   /** Current protocol fee in basis points (e.g. 30 = 0.3%). */
-  async protocolFeeBps(): Promise<number> {
+  async protocolFeeBps(signal?: AbortSignal): Promise<number> {
+    if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
     const caller = await this._resolveCallerAddress();
     const tx  = await buildContractCallTx(
       this.rpcUrl, this.passphrase, caller,
