@@ -191,6 +191,57 @@ describe('FactoryModule — streamAddress()', () => {
     await factory.streamAddress(1n);
     expect(mockSimulate).toHaveBeenCalledTimes(2);
   });
+
+  it('honours custom negativeAddressCacheTtlMs and expires after the configured duration (#602)', async () => {
+    const { FactoryModule } = await import('../factory.js');
+    mockSimulate
+      .mockResolvedValueOnce(makeVoidScVal())
+      .mockResolvedValueOnce(makeU32ScVal(1));
+
+    // Configure a short 30ms negative cache TTL
+    const factory = new FactoryModule({
+      ...cfg(),
+      negativeAddressCacheTtlMs: 30,
+    });
+
+    const first = await factory.streamAddress(99n);
+    expect(first).toBeNull();
+    expect(mockSimulate).toHaveBeenCalledTimes(1);
+
+    // Immediate repeat query is served from negative cache
+    const second = await factory.streamAddress(99n);
+    expect(second).toBeNull();
+    expect(mockSimulate).toHaveBeenCalledTimes(1);
+
+    // Wait for TTL to expire
+    await new Promise((resolve) => setTimeout(resolve, 45));
+
+    // Third query after TTL expiration triggers a fresh resolution
+    const third = await factory.streamAddress(99n);
+    expect(third).not.toBeNull();
+    expect(mockSimulate).toHaveBeenCalledTimes(2);
+  });
+
+  it('immediately re-queries when negativeAddressCacheTtlMs is 0 (#602)', async () => {
+    const { FactoryModule } = await import('../factory.js');
+    mockSimulate
+      .mockResolvedValueOnce(makeVoidScVal())
+      .mockResolvedValueOnce(makeVoidScVal());
+
+    const factory = new FactoryModule({
+      ...cfg(),
+      negativeAddressCacheTtlMs: 0,
+    });
+
+    const first = await factory.streamAddress(101n);
+    expect(first).toBeNull();
+    expect(mockSimulate).toHaveBeenCalledTimes(1);
+
+    // With 0ms TTL, next query expires immediately and queries RPC
+    const second = await factory.streamAddress(101n);
+    expect(second).toBeNull();
+    expect(mockSimulate).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('FactoryModule — cache consolidation with StreamsModule', () => {

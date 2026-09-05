@@ -784,7 +784,27 @@ The SDK can be configured via environment variables or explicit constructor opti
 
 ---
 
+---
+
+## ConduitConfig Reference
+
+| Field | Type | Default | Effect |
+|---|---|---|---|
+| network | `'mainnet' \| 'testnet' \| 'local'` | (required) | Which Stellar network to connect to. |
+| keypair | `Keypair` | undefined | Signing keypair used for mutating operations. |
+| wallet | `WalletAdapter` | undefined | Browser/mobile wallet adapter (e.g. WalletConnect). |
+| signer | `Signer` | undefined | Custom signer plugin (KMS/HSM). Takes precedence over keypair. |
+| rpcUrl | `string` | Network default | Override the default Soroban RPC endpoint. |
+| factoryAddress | `string` | Network default | Override the deployed DripFactory contract ID. |
+| governorAddress | `string` | Network default | Override the deployed DripGovernor contract ID. |
+| confirmationPollIntervalMs | `number` | 1000 | Poll interval for transaction confirmation. |
+| confirmationMaxAttempts | `number` | 30 | Maximum confirmation polling attempts. |
+| fee | `string` | undefined | Explicit inclusion fee in stroops. Takes precedence over feeMultiplier. |
+| feeMultiplier | `number` | 1 | Multiplier applied to BASE_FEE when fee is not set. |
+| negativeAddressCacheTtlMs | `number` | 30000 | Negative cache TTL in ms for null streamAddress queries in FactoryModule. |
+
+---
+
 ## License
 
 MIT — see [`LICENSE`](./LICENSE).
-\n## ConduitConfig reference\n\n| Field | Type | Default | Effect |\n|---|---|---|---|\n| network | \`mainnet | testnet | local\` | (required) | Which Stellar network to connect to. |\n| keypair | \`Keypair\` | undefined | Signing keypair used for mutating operations. |\n| wallet | \`WalletAdapter\` | undefined | Browser/mobile wallet adapter (e.g. WalletConnect). |\n| signer | \`Signer\` | undefined | Custom signer plugin (KMS/HSM). Takes precedence over keypair. |\n| rpcUrl | \`string\` | Network default | Override the default Soroban RPC endpoint. |\n| factoryAddress | \`string\` | Network default | Override the deployed DripFactory contract ID. |\n| governorAddress | \`string\` | Network default | Override the deployed DripGovernor contract ID. |\n| confirmationPollIntervalMs | \`number\` | 1000 | Poll interval for transaction confirmation. |\n| confirmationMaxAttempts | \`number\` | 30 | Maximum confirmation polling attempts. |\n| fee | \`string\` | undefined | Explicit inclusion fee in stroops. Takes precedence over feeMultiplier. |\n| feeMultiplier | \`number\` | 1 | Multiplier applied to BASE_FEE when fee is not set. |\n\n

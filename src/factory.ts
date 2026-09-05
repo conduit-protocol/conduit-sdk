@@ -24,12 +24,13 @@ import { SUPPORTED_NETWORKS, UnsupportedChainError } from './errors.js';
  * `clearAddressCache()` (#568). A *found* address is immutable and cached
  * for the module's lifetime.
  */
-const NEGATIVE_ADDRESS_CACHE_TTL_MS = 30_000;
+export const DEFAULT_NEGATIVE_ADDRESS_CACHE_TTL_MS = 30_000;
 
 export class FactoryModule {
   private readonly rpcUrl:      string;
   private readonly passphrase:  string;
   private readonly factoryId:   string;
+  private readonly negativeAddressCacheTtlMs: number;
 
   /**
    * Active wallet adapter, if the client was configured with `wallet` (or a
@@ -47,9 +48,9 @@ export class FactoryModule {
 
   // streamId -> contract address. A resolved (non-null) address is immutable
   // and cached for the module's lifetime; a `null` result is cached with a
-  // short TTL (see NEGATIVE_ADDRESS_CACHE_TTL_MS) so a dashboard polling
+  // configurable TTL (see DEFAULT_NEGATIVE_ADDRESS_CACHE_TTL_MS) so a dashboard polling
   // list() over a page with a few archived/pending ids does not re-issue a
-  // stream_address simulation for each of them on every refresh (#568).
+  // stream_address simulation for each of them on every refresh (#568, #602).
   private readonly addressCache = new Map<string, string | null>();
   private readonly negativeCacheExpiry = new Map<string, number>();
 
@@ -60,6 +61,10 @@ export class FactoryModule {
     if (!(SUPPORTED_NETWORKS as readonly string[]).includes(config.network)) {
       throw new UnsupportedChainError(config.network);
     }
+    this.negativeAddressCacheTtlMs =
+      config.negativeAddressCacheTtlMs !== undefined
+        ? Math.max(0, config.negativeAddressCacheTtlMs)
+        : DEFAULT_NEGATIVE_ADDRESS_CACHE_TTL_MS;
     this.rpcUrl     = config.rpcUrl     ?? DEFAULT_RPC[config.network];
     this.passphrase = NETWORK_PASSPHRASE[config.network];
     // There is no known default DripFactory deployment for any network —
@@ -181,7 +186,7 @@ export class FactoryModule {
 
   private _cacheNegative(key: string): void {
     this.addressCache.set(key, null);
-    this.negativeCacheExpiry.set(key, Date.now() + NEGATIVE_ADDRESS_CACHE_TTL_MS);
+    this.negativeCacheExpiry.set(key, Date.now() + this.negativeAddressCacheTtlMs);
   }
 
   /**
