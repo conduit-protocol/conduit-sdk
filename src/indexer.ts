@@ -122,7 +122,7 @@ export class GraphQLIndexer {
     this.endpoint = endpoint;
   }
 
-  async query(options: GraphQLQueryOptions): Promise<unknown> {
+  async query<T = unknown>(options: GraphQLQueryOptions): Promise<T> {
     if (this.isDestroyed) {
       throw new Error('GraphQLIndexer has been destroyed');
     }
@@ -188,7 +188,7 @@ export class GraphQLIndexer {
       throw new ConduitError('stream', UNKNOWN_CONTRACT_ERROR_CODE, messages.join('; '));
     }
 
-    return body?.data;
+    return body?.data as T;
   }
 
   /**

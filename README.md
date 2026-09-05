@@ -101,6 +101,30 @@ const client = new ConduitClient(config: ConduitConfig);
 | `rpcUrl` | `string` | No | Override default Soroban RPC URL |
 | `factoryAddress` | `string` | No | Override deployed factory contract ID |
 | `governorAddress` | `string` | No | Override deployed governor contract ID |
+| `fee` | `string` | No | Explicit inclusion fee in stroops (overrides `feeMultiplier`). Pass the result of `resolveFee(config)` to honour precedence. |
+| `feeMultiplier` | `number` | No | Multiplier applied to `BASE_FEE` when `fee` is not set. Default `1` (network minimum). |
+
+### Fee Precedence
+
+The SDK resolves the inclusion fee via `resolveFee()` (re-exported from the entry point):
+
+1. **Explicit `fee`** — if set in `ConduitConfig`, it wins outright.
+2. **`feeMultiplier * BASE_FEE`** — if `fee` is unset but `feeMultiplier` is provided, the fee is the network base fee scaled by the multiplier.
+3. **`BASE_FEE`** — with neither set, the network minimum is used (the previous hardcoded behaviour).
+
+```typescript
+import { ConduitClient, resolveFee } from '@conduit-protocol/sdk';
+
+// Explicit fee
+resolveFee({ fee: '200000' })           // → '200000'
+
+// Multiplier (2x base fee)
+resolveFee({ feeMultiplier: 2 })   // → (BASE_FEE * 2).toString()
+
+// Default (base fee)
+resolveFee({})                      // → BASE_FEE
+```
+
 
 ### WalletConnect v2 Integration (Mobile & Browser Wallets)
 
@@ -570,6 +594,13 @@ available, `AbortController` + `setTimeout` otherwise):
 import { timeoutSignal } from '@conduit-protocol/sdk';
 
 const data = await indexer.query({ query: GET_STREAMS, signal: timeoutSignal(5_000) });
+
+// query() returns body.data (unwrapped), not the { data } envelope.
+// Use the typed generic to get type-safe results:
+interface StreamList { streams: Stream[]; }
+const result = await indexer.query<StreamList>({ query: GET_STREAMS });
+// result is typed as StreamList, not { data: StreamList }
+
 ```
 
 Or hand-roll the polyfill:
