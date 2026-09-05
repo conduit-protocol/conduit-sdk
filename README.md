@@ -784,7 +784,50 @@ The SDK can be configured via environment variables or explicit constructor opti
 
 ---
 
+## Fee Resolution & Precedence
+
+StreamFi transactions use the exported `resolveFee(config)` helper to determine the final inclusion fee in stroops.
+
+### Precedence Hierarchy
+1. **Explicit `fee`**: If `config.fee` is set (e.g. `'5000'`), it takes highest precedence and is used as-is.
+2. **`feeMultiplier`**: If `config.fee` is not set but `config.feeMultiplier` is provided, the fee is calculated as:
+   `BASE_FEE * feeMultiplier` (e.g. `feeMultiplier: 10` with `BASE_FEE = '100'` results in `'1000'`).
+3. **Default `BASE_FEE`**: If neither is set, `resolveFee()` returns the default network `BASE_FEE` (`'100'` stroops).
+
+### Usage
+```typescript
+import { resolveFee } from '@conduit/streamfi-sdk';
+
+// 1. Explicit fee takes top precedence
+const fee1 = resolveFee({ fee: '5000', feeMultiplier: 10 }); // '5000'
+
+// 2. Fee multiplier scales BASE_FEE (100 stroops)
+const fee2 = resolveFee({ feeMultiplier: 5 }); // '500'
+
+// 3. Fallback to default BASE_FEE
+const fee3 = resolveFee({}); // '100'
+```
+
+---
+
+## ConduitConfig Reference
+
+| Field | Type | Default | Effect |
+|---|---|---|---|
+| network | `'mainnet' \| 'testnet' \| 'local'` | (required) | Which Stellar network to connect to. |
+| keypair | `Keypair` | undefined | Signing keypair used for mutating operations. |
+| wallet | `WalletAdapter` | undefined | Browser/mobile wallet adapter (e.g. WalletConnect). |
+| signer | `Signer` | undefined | Custom signer plugin (KMS/HSM). Takes precedence over keypair. |
+| rpcUrl | `string` | Network default | Override the default Soroban RPC endpoint. |
+| factoryAddress | `string` | Network default | Override the deployed DripFactory contract ID. |
+| governorAddress | `string` | Network default | Override the deployed DripGovernor contract ID. |
+| confirmationPollIntervalMs | `number` | 1000 | Poll interval for transaction confirmation. |
+| confirmationMaxAttempts | `number` | 30 | Maximum confirmation polling attempts. |
+| fee | `string` | undefined | Explicit inclusion fee in stroops. Takes precedence over feeMultiplier. |
+| feeMultiplier | `number` | 1 | Multiplier applied to BASE_FEE when fee is not set. |
+
+---
+
 ## License
 
 MIT — see [`LICENSE`](./LICENSE).
-\n## ConduitConfig reference\n\n| Field | Type | Default | Effect |\n|---|---|---|---|\n| network | \`mainnet | testnet | local\` | (required) | Which Stellar network to connect to. |\n| keypair | \`Keypair\` | undefined | Signing keypair used for mutating operations. |\n| wallet | \`WalletAdapter\` | undefined | Browser/mobile wallet adapter (e.g. WalletConnect). |\n| signer | \`Signer\` | undefined | Custom signer plugin (KMS/HSM). Takes precedence over keypair. |\n| rpcUrl | \`string\` | Network default | Override the default Soroban RPC endpoint. |\n| factoryAddress | \`string\` | Network default | Override the deployed DripFactory contract ID. |\n| governorAddress | \`string\` | Network default | Override the deployed DripGovernor contract ID. |\n| confirmationPollIntervalMs | \`number\` | 1000 | Poll interval for transaction confirmation. |\n| confirmationMaxAttempts | \`number\` | 30 | Maximum confirmation polling attempts. |\n| fee | \`string\` | undefined | Explicit inclusion fee in stroops. Takes precedence over feeMultiplier. |\n| feeMultiplier | \`number\` | 1 | Multiplier applied to BASE_FEE when fee is not set. |\n\n
