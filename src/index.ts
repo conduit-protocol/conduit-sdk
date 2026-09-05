@@ -43,8 +43,10 @@ export {
   RpcServiceUnavailableError,
   IndexerTimeoutError,
   OperationAbortedError,
+  ConfirmationTimeoutError,
   isConduitError,
   SUPPORTED_NETWORKS,
+
   CAIP2_TO_NETWORK,
   UNKNOWN_CONTRACT_ERROR_CODE,
 } from './errors.js';
