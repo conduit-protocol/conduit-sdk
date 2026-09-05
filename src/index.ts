@@ -43,6 +43,7 @@ export {
   RpcServiceUnavailableError,
   IndexerTimeoutError,
   OperationAbortedError,
+  BatchPartiallySubmittedError,
   isConduitError,
   SUPPORTED_NETWORKS,
   CAIP2_TO_NETWORK,

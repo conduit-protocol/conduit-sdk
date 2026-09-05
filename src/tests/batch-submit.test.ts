@@ -44,6 +44,7 @@ vi.mock('@stellar/stellar-sdk', async () => {
 import {
   submitBatch,
   BatchBuildError,
+  BatchPartiallySubmittedError,
   type BuiltBatchTransaction,
   type BatchSubmitOptions,
 } from '../batch-tx.js';
@@ -399,5 +400,50 @@ describe('submitBatch — abort signal', () => {
     expect(result.outcomes[0]!.status).toBe('SUCCESS');
     expect(result.outcomes[1]!.status).toBe('SKIPPED');
     expect(result.outcomes[2]!.status).toBe('SKIPPED');
+  });
+
+  describe('BatchPartiallySubmittedError (#601)', () => {
+    it('throws BatchPartiallySubmittedError when throwOnPartial is true and tx fails at submission', async () => {
+      mockSendTransaction
+        .mockResolvedValueOnce(sendOk(0))
+        .mockResolvedValueOnce({ status: 'ERROR', errorResult: 'txBAD_AUTH' });
+      mockGetTransaction.mockResolvedValueOnce(statusOk());
+
+      const txs = [makeTx(0), makeTx(1), makeTx(2), makeTx(3)];
+      await expect(
+        submitBatch(txs, RPC_URL, { ...OPTS, throwOnPartial: true }),
+      ).rejects.toThrow(BatchPartiallySubmittedError);
+
+      mockSendTransaction.mockReset();
+      mockGetTransaction.mockReset();
+      mockSendTransaction
+        .mockResolvedValueOnce(sendOk(0))
+        .mockResolvedValueOnce({ status: 'ERROR', errorResult: 'txBAD_AUTH' });
+      mockGetTransaction.mockResolvedValueOnce(statusOk());
+
+      try {
+        await submitBatch(txs, RPC_URL, { ...OPTS, throwOnPartial: true });
+        expect.unreachable('Should have thrown BatchPartiallySubmittedError');
+      } catch (err) {
+        expect(err).toBeInstanceOf(BatchPartiallySubmittedError);
+        const partialErr = err as BatchPartiallySubmittedError;
+        expect(partialErr.firstFailureIndex).toBe(1);
+        expect(partialErr.skippedIndices).toEqual([2, 3]);
+        expect(partialErr.outcomes).toHaveLength(4);
+        expect(partialErr.name).toBe('BatchPartiallySubmittedError');
+      }
+    });
+
+    it('does not throw when throwOnPartial is false or omitted on failure', async () => {
+      mockSendTransaction
+        .mockResolvedValueOnce(sendOk(0))
+        .mockResolvedValueOnce({ status: 'ERROR', errorResult: 'txBAD_AUTH' });
+      mockGetTransaction.mockResolvedValueOnce(statusOk());
+
+      const txs = [makeTx(0), makeTx(1), makeTx(2)];
+      const result = await submitBatch(txs, RPC_URL, OPTS);
+      expect(result.allSucceeded).toBe(false);
+      expect(result.firstFailureIndex).toBe(1);
+    });
   });
 });
