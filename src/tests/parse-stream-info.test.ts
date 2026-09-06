@@ -193,4 +193,17 @@ describe('parseStreamInfo — flags (#521)', () => {
     expect(info.clawbackEnabled).toBe(true);
     expect(info.cancelled).toBe(false);
   });
+
+  it('falls back to flags=0 when flags is not a u32 ScVal (#617)', async () => {
+    mockSimulate.mockResolvedValue(simSuccess(baseStreamMap({
+      flags: xdr.ScVal.scvString('not-a-u32'),
+    })));
+    const { StreamsModule } = await import('../streams.js');
+    const sdk = new StreamsModule({ network: 'testnet', factoryAddress: FACTORY_ADDR, keypair: Keypair.random() });
+
+    const info = await sdk.get(1n);
+    expect(info.paused).toBe(false);
+    expect(info.cancelled).toBe(false);
+    expect(info.clawbackEnabled).toBe(false);
+  });
 });
