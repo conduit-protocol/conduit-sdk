@@ -447,3 +447,29 @@ export class IndexerTimeoutError extends Error {
     Object.setPrototypeOf(this, new.target.prototype);
   }
 }
+
+/** Thrown when {@link StreamBuilder} encounters one or more validation failures.
+ *  Instead of failing on the first bad field, every issue is collected into
+ *  `issues[]` so callers can surface them all at once (e.g. in a form UI).
+ *
+ *  @example
+ *  ```ts
+ *  try {
+ *    builder.token('bad').amount(-1).build();
+ *  } catch (err) {
+ *    if (err instanceof ValidationError) {
+ *      console.error(err.issues); // ['token must be ...', 'amount must be ...']
+ *    }
+ *  }
+ *  ```
+ */
+export class ValidationError extends Error {
+  readonly issues: readonly string[];
+
+  constructor(issues: string[]) {
+    super(issues.join('; '));
+    this.name = 'ValidationError';
+    this.issues = Object.freeze([...issues]);
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}

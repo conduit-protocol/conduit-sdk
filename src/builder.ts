@@ -1,5 +1,6 @@
 import { StrKey, Address, nativeToScVal } from '@stellar/stellar-sdk';
 import { bigintSafeStringify } from './utils.js';
+import { ValidationError } from './errors.js';
 import { boolToScVal } from './soroban.js';
 import {
   buildBatchTransactions,
@@ -59,6 +60,7 @@ export class StreamBuilder {
   private _startTime?: number | undefined;
   private _endTime?: number | undefined;
   private _clawbackEnabled?: boolean | undefined;
+  private _issues: string[] = [];
 
   private pendingQueue: Array<Record<string, unknown>> = [];
   private activeTimers: Set<NodeJS.Timeout> = new Set();
@@ -77,7 +79,9 @@ export class StreamBuilder {
    * @returns The builder instance for chaining.
    */
   token(address: string): this {
-    this._token = StreamBuilder._validateAddress(address, 'token');
+    const err = StreamBuilder._validateAddress(address, 'token');
+    if (err) this._issues.push(err);
+    else this._token = address;
     return this;
   }
 
@@ -87,7 +91,9 @@ export class StreamBuilder {
    * @returns The builder instance for chaining.
    */
   sender(address: string): this {
-    this._sender = StreamBuilder._validateAddress(address, 'sender');
+    const err = StreamBuilder._validateAddress(address, 'sender');
+    if (err) this._issues.push(err);
+    else this._sender = address;
     return this;
   }
 
@@ -97,7 +103,9 @@ export class StreamBuilder {
    * @returns The builder instance for chaining.
    */
   recipient(address: string): this {
-    this._recipient = StreamBuilder._validateAddress(address, 'recipient');
+    const err = StreamBuilder._validateAddress(address, 'recipient');
+    if (err) this._issues.push(err);
+    else this._recipient = address;
     return this;
   }
 
@@ -112,11 +120,13 @@ export class StreamBuilder {
   amount(val: number | bigint): this {
     if (typeof val === 'bigint') {
       if (val <= 0n) {
-        throw new Error('Invalid StreamBuilder parameter: amount must be a positive value');
+        this._issues.push('Invalid StreamBuilder parameter: amount must be a positive value');
+        return this;
       }
     } else {
       if (!Number.isFinite(val) || val <= 0) {
-        throw new Error('Invalid StreamBuilder parameter: amount must be a positive finite number');
+        this._issues.push('Invalid StreamBuilder parameter: amount must be a positive finite number');
+        return this;
       }
     }
     this._amount = val;
@@ -134,11 +144,13 @@ export class StreamBuilder {
   ratePerSecond(val: number | bigint): this {
     if (typeof val === 'bigint') {
       if (val <= 0n) {
-        throw new Error('Invalid StreamBuilder parameter: ratePerSecond must be a positive value');
+        this._issues.push('Invalid StreamBuilder parameter: ratePerSecond must be a positive value');
+        return this;
       }
     } else {
       if (!Number.isFinite(val) || val <= 0) {
-        throw new Error('Invalid StreamBuilder parameter: ratePerSecond must be a positive finite number');
+        this._issues.push('Invalid StreamBuilder parameter: ratePerSecond must be a positive finite number');
+        return this;
       }
     }
     this._ratePerSecond = val;
@@ -154,11 +166,13 @@ export class StreamBuilder {
    */
   startTime(val: number): this {
     if (!Number.isInteger(val) || val < 0) {
-      throw new Error('Invalid StreamBuilder parameter: startTime must be a non-negative integer Unix timestamp');
+      this._issues.push('Invalid StreamBuilder parameter: startTime must be a non-negative integer Unix timestamp');
+      return this;
     }
     const now = Math.floor(Date.now() / 1000);
     if (val < now) {
-      throw new Error('Invalid StreamBuilder parameter: startTime cannot be in the past');
+      this._issues.push('Invalid StreamBuilder parameter: startTime cannot be in the past');
+      return this;
     }
     this._startTime = val;
     return this;
@@ -173,7 +187,8 @@ export class StreamBuilder {
    */
   endTime(val: number): this {
     if (!Number.isInteger(val) || val < 0) {
-      throw new Error('Invalid StreamBuilder parameter: endTime must be a non-negative integer Unix timestamp');
+      this._issues.push('Invalid StreamBuilder parameter: endTime must be a non-negative integer Unix timestamp');
+      return this;
     }
     this._endTime = val;
     return this;
@@ -187,7 +202,8 @@ export class StreamBuilder {
    */
   clawbackEnabled(val: boolean): this {
     if (typeof val !== 'boolean') {
-      throw new Error('Invalid StreamBuilder parameter: clawbackEnabled must be a boolean');
+      this._issues.push('Invalid StreamBuilder parameter: clawbackEnabled must be a boolean');
+      return this;
     }
     this._clawbackEnabled = val;
     return this;
@@ -208,7 +224,12 @@ export class StreamBuilder {
         this._sender === undefined || this._sender === null ||
         this._recipient === undefined || this._recipient === null ||
         this._amount === undefined || this._amount === null) {
-      throw new Error('Missing required parameters for StreamBuilder');
+      this._issues.push('Missing required parameters for StreamBuilder');
+    }
+    if (this._issues.length > 0) {
+      const issues = [...this._issues];
+      this._issues = []; // reset for next attempt
+      throw new ValidationError(issues);
     }
 
     const config: Record<string, unknown> = {
@@ -408,27 +429,23 @@ export class StreamBuilder {
     this.pendingQueue = [];
   }
 
-  private static _validateAddress(address: string, field: string): string {
+  private static _validateAddress(address: string, field: string): string | null {
     if (typeof address !== 'string' || address.trim().length === 0) {
-      throw new Error(`Invalid StreamBuilder parameter: ${field} must be a non-empty string`);
+      return `Invalid StreamBuilder parameter: ${field} must be a non-empty string`;
     }
 
     if (field === 'token') {
       if (!StrKey.isValidContract(address)) {
-        throw new Error(
-          `Invalid StreamBuilder parameter: ${field} must be a valid Soroban contract ID (C-address), got "${address}"`,
-        );
+        return `Invalid StreamBuilder parameter: ${field} must be a valid Soroban contract ID (C-address), got "${address}"`;
       }
     } else {
       // sender / recipient — must be valid Stellar addresses (G-address or C-address)
       if (!StrKey.isValidEd25519PublicKey(address) && !StrKey.isValidContract(address)) {
-        throw new Error(
-          `Invalid StreamBuilder parameter: ${field} must be a valid Stellar public key or contract address (G-address or C-address), got "${address}"`,
-        );
+        return `Invalid StreamBuilder parameter: ${field} must be a valid Stellar public key or contract address (G-address or C-address), got "${address}"`;
       }
     }
 
-    return address;
+    return null;
   }
 }
 

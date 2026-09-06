@@ -223,3 +223,58 @@ describe('StreamBuilder', () => {
     expect(args).toHaveLength(8);
   });
 });
+
+import { ValidationError } from '../errors.js';
+
+describe('StreamBuilder aggregate validation (#631)', () => {
+  it('collects all validation errors into a single ValidationError', () => {
+    let thrown: ValidationError | undefined;
+    try {
+      new StreamBuilder()
+        .token('not-a-contract')
+        .sender('')
+        .recipient('also-bad')
+        .amount(-1)
+        .ratePerSecond(0)
+        .clawbackEnabled('yes' as unknown as boolean)
+        .build();
+    } catch (err) {
+      if (err instanceof ValidationError) thrown = err;
+    }
+
+    expect(thrown).toBeDefined();
+    expect(thrown!.issues.length).toBeGreaterThanOrEqual(5);
+    expect(thrown!.issues.some(i => i.includes('token'))).toBe(true);
+    expect(thrown!.issues.some(i => i.includes('sender'))).toBe(true);
+    expect(thrown!.issues.some(i => i.includes('recipient'))).toBe(true);
+    expect(thrown!.issues.some(i => i.includes('amount'))).toBe(true);
+    expect(thrown!.issues.some(i => i.includes('ratePerSecond'))).toBe(true);
+    expect(thrown!.issues.some(i => i.includes('clawbackEnabled'))).toBe(true);
+  });
+
+  it('clears issues after the first failed build so a second attempt starts fresh', () => {
+    const builder = new StreamBuilder()
+      .token('CAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQC526')
+      .sender('GAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQDZ7H')
+      .recipient('GABAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEJXA')
+      .amount(-1); // invalid
+
+    expect(() => builder.build()).toThrow(ValidationError);
+
+    // Fix the builder and rebuild
+    builder.amount(1000);
+    const stream = builder.build();
+    expect(stream.amount).toBe(1000);
+  });
+
+  it('does not throw when all fields are valid', () => {
+    expect(() =>
+      new StreamBuilder()
+        .token('CAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQC526')
+        .sender('GAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQDZ7H')
+        .recipient('GABAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEJXA')
+        .amount(1000)
+        .build(),
+    ).not.toThrow();
+  });
+});
