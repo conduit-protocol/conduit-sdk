@@ -17,6 +17,21 @@
       "require": "./dist/cjs/index.js",
       "types": "./dist/types/index.d.ts"
     },
+    "./indexer": {
+      "import": "./dist/esm/indexer.js",
+      "require": "./dist/cjs/indexer.js",
+      "types": "./dist/types/indexer.d.ts"
+    },
+    "./batch": {
+      "import": "./dist/esm/batch-tx.js",
+      "require": "./dist/cjs/batch-tx.js",
+      "types": "./dist/types/batch-tx.d.ts"
+    },
+    "./nonce": {
+      "import": "./dist/esm/nonce/NonceManager.js",
+      "require": "./dist/cjs/nonce/NonceManager.js",
+      "types": "./dist/types/nonce/NonceManager.d.ts"
+    },
     "./utils": {
       "import": "./dist/esm/utils.js",
       "require": "./dist/cjs/utils.js",
@@ -37,8 +52,7 @@
     "test:e2e": "playwright test --config tests/browser/playwright.config.ts",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src --ext .ts",
-    "size-limit": "size-limit"
+    "lint": "eslint src --ext .ts"
   },
   "peerDependencies": {
     "@stellar/stellar-sdk": "^12.0.0"
@@ -58,8 +72,7 @@
     "rollup": "^4.18.0",
     "rollup-plugin-visualizer": "^7.0.1",
     "typescript": "^5.5.3",
-    "vitest": "^4.1.10",
-    "@size-limit/preset-small-lib": "^11.0.0"
+    "vitest": "^4.1.10"
   },
   "dependencies": {
     "tslib": "^2.8.1"
