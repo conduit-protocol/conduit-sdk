@@ -1,5 +1,5 @@
 import { StrKey, Address, nativeToScVal } from '@stellar/stellar-sdk';
-import { bigintSafeStringify, toStroops } from './utils.js';
+import { bigintSafeStringify, toStroops, isValidAddress } from './utils.js';
 import { boolToScVal } from './soroban.js';
 import {
   buildBatchTransactions,
@@ -426,7 +426,7 @@ export class StreamBuilder {
       }
     } else {
       // sender / recipient — must be valid Stellar addresses (G-address or C-address)
-      if (!StrKey.isValidEd25519PublicKey(address) && !StrKey.isValidContract(address)) {
+      if (!isValidAddress(address)) {
         throw new Error(
           `Invalid StreamBuilder parameter: ${field} must be a valid Stellar public key or contract address (G-address or C-address), got "${address}"`,
         );
@@ -565,7 +565,7 @@ function validatePayload(streams: unknown): string[] {
       // Validate sender field — must be a valid Stellar public key (G-address) or contract ID (C-address)
       if (obj.sender !== undefined && obj.sender !== null) {
         const sender = String(obj.sender);
-        if (!StrKey.isValidEd25519PublicKey(sender) && !StrKey.isValidContract(sender)) {
+        if (!isValidAddress(sender)) {
           errors.push(`Batch item at index ${i}: sender must be a valid Stellar public key or contract address (G-address or C-address), got "${sender}"`);
         }
       }
@@ -573,7 +573,7 @@ function validatePayload(streams: unknown): string[] {
       // Validate recipient field — must be a valid Stellar public key (G-address) or contract ID (C-address)
       if (obj.recipient !== undefined && obj.recipient !== null) {
         const recipient = String(obj.recipient);
-        if (!StrKey.isValidEd25519PublicKey(recipient) && !StrKey.isValidContract(recipient)) {
+        if (!isValidAddress(recipient)) {
           errors.push(`Batch item at index ${i}: recipient must be a valid Stellar public key or contract address (G-address or C-address), got "${recipient}"`);
         }
       }
