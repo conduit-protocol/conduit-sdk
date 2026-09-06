@@ -181,16 +181,17 @@ describe('parseStreamInfo — flags (#521)', () => {
     expect(info.clawbackEnabled).toBe(true);
   });
 
-  it('derives multiple flags from a combined bitmask', async () => {
-    mockSimulate.mockResolvedValue(simSuccess(baseStreamMap({
-      flags: u32Scv(FLAG_PAUSED | FLAG_CLAWBACK_ENABLED),
-    })));
+  it('falls back to 0 when flags is present but not a u32 (#617)', async () => {
+    // Pass a u64 ScVal where u32 is expected — scValToU32 would throw,
+    // but parseStreamInfo should swallow the error and default to 0.
+    const badFlags = xdr.ScVal.scvU64(xdr.Uint64.fromString('42'));
+    mockSimulate.mockResolvedValue(simSuccess(baseStreamMap({ flags: badFlags })));
     const { StreamsModule } = await import('../streams.js');
     const sdk = new StreamsModule({ network: 'testnet', factoryAddress: FACTORY_ADDR, keypair: Keypair.random() });
 
     const info = await sdk.get(1n);
-    expect(info.paused).toBe(true);
-    expect(info.clawbackEnabled).toBe(true);
+    expect(info.paused).toBe(false);
     expect(info.cancelled).toBe(false);
+    expect(info.clawbackEnabled).toBe(false);
   });
 });

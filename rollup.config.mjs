@@ -65,6 +65,7 @@ const sharedOutput = {
     'sdk-internal': [
       'src/soroban.ts',
       'src/streams.ts',
+      'src/circuit-breaker.ts',
       'src/builder.ts',
       'src/batch-tx.ts',
       'src/client.ts',
