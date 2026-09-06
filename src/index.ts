@@ -22,6 +22,7 @@ export type {
   BatchSubmitOptions,
 } from './batch-tx.js';
 export { GraphQLIndexer, DEFAULT_INDEXER_TIMEOUT_MS } from './indexer.js';
+export type { GraphQLIndexerOptions } from './indexer.js';
 export type {
   GraphQLQueryOptions,
   GraphQLSubscriptionOptions,
