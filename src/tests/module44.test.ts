@@ -72,11 +72,48 @@ describe('Module44 (SDK Feature #44)', () => {
       expect(result.riskLevel).toBe('inactive');
     });
 
-    it('classifies an open-ended stream as healthy with null runway', () => {
-      const item = { id: 's1', stream: { ...mockStream, endTime: 0 }, timestamp: now };
-      const result = module44.assessSingleItem(item);
-      expect(result.runwaySecs).toBeNull();
-      expect(result.riskLevel).toBe('healthy');
+    describe('open-ended streams (endTime === 0)', () => {
+      it('classifies an active open-ended stream as healthy with null runway', () => {
+        const item = { id: 's1', stream: { ...mockStream, endTime: 0 }, timestamp: now };
+        const result = module44.assessSingleItem(item);
+        expect(result.runwaySecs).toBeNull();
+        expect(result.riskLevel).toBe('healthy');
+      });
+
+      it('classifies an open-ended stream with zero rate as inactive', () => {
+        const item = { id: 's1', stream: { ...mockStream, endTime: 0, ratePerSecond: 0n }, timestamp: now };
+        const result = module44.assessSingleItem(item);
+        expect(result.runwaySecs).toBe(0);
+        expect(result.riskLevel).toBe('inactive');
+      });
+
+      it('classifies a paused open-ended stream as inactive with zero runway', () => {
+        const item = { id: 's1', stream: { ...mockStream, endTime: 0, paused: true }, timestamp: now };
+        const result = module44.assessSingleItem(item);
+        expect(result.runwaySecs).toBe(0);
+        expect(result.riskLevel).toBe('inactive');
+      });
+
+      it('classifies a cancelled open-ended stream as inactive with zero runway', () => {
+        const item = { id: 's1', stream: { ...mockStream, endTime: 0, cancelled: true }, timestamp: now };
+        const result = module44.assessSingleItem(item);
+        expect(result.runwaySecs).toBe(0);
+        expect(result.riskLevel).toBe('inactive');
+      });
+
+      it('preserves null runway and healthy risk classification when retrieved from cache', () => {
+        const mod = new Module44({ enableOptimization: true });
+        const item = { id: 'open-cache-1', stream: { ...mockStream, endTime: 0 }, timestamp: now };
+        const first = mod.assessSingleItem(item);
+        expect(first.isCached).toBe(false);
+        expect(first.runwaySecs).toBeNull();
+        expect(first.riskLevel).toBe('healthy');
+
+        const cached = mod.assessSingleItem(item);
+        expect(cached.isCached).toBe(true);
+        expect(cached.runwaySecs).toBeNull();
+        expect(cached.riskLevel).toBe('healthy');
+      });
     });
 
     it('classifies runway already past endTime as inactive', () => {
@@ -190,6 +227,24 @@ describe('Module44 (SDK Feature #44)', () => {
       ]);
       expect(viaBatch.getPerformanceMetrics().totalAssessed).toBe(2);
     });
+
+    it('accurately assesses mixed batches containing both open-ended and bounded streams', () => {
+      const items = [
+        { id: 'open-1', stream: { ...mockStream, id: 1n, endTime: 0 }, timestamp: now },
+        { id: 'bounded-critical', stream: { ...mockStream, id: 2n, endTime: now + 1000 }, timestamp: now },
+        { id: 'open-paused', stream: { ...mockStream, id: 3n, endTime: 0, paused: true }, timestamp: now },
+      ];
+
+      const results = module44.assessBatch(items);
+      expect(results[0]?.runwaySecs).toBeNull();
+      expect(results[0]?.riskLevel).toBe('healthy');
+
+      expect(results[1]?.runwaySecs).toBe(1000);
+      expect(results[1]?.riskLevel).toBe('critical');
+
+      expect(results[2]?.runwaySecs).toBe(0);
+      expect(results[2]?.riskLevel).toBe('inactive');
+    });
   });
 
   describe('estimateTopUpNeeded', () => {
@@ -204,9 +259,29 @@ describe('Module44 (SDK Feature #44)', () => {
       expect(module44.estimateTopUpNeeded(stream, 200, now)).toBe(5000n);
     });
 
-    it('returns 0n for an open-ended stream (runway already infinite)', () => {
-      const stream = { ...mockStream, endTime: 0 };
-      expect(module44.estimateTopUpNeeded(stream, 1_000_000, now)).toBe(0n);
+    describe('open-ended streams (endTime === 0)', () => {
+      it('returns 0n for an active open-ended stream across various target runways', () => {
+        const stream = { ...mockStream, endTime: 0, ratePerSecond: 100n };
+        expect(module44.estimateTopUpNeeded(stream, 10, now)).toBe(0n);
+        expect(module44.estimateTopUpNeeded(stream, 3600, now)).toBe(0n);
+        expect(module44.estimateTopUpNeeded(stream, 86400 * 365, now)).toBe(0n);
+        expect(module44.estimateTopUpNeeded(stream, 1_000_000_000, now)).toBe(0n);
+      });
+
+      it('returns 0n for a paused open-ended stream', () => {
+        const stream = { ...mockStream, endTime: 0, paused: true, ratePerSecond: 100n };
+        expect(module44.estimateTopUpNeeded(stream, 1000, now)).toBe(0n);
+      });
+
+      it('returns 0n for a cancelled open-ended stream', () => {
+        const stream = { ...mockStream, endTime: 0, cancelled: true, ratePerSecond: 100n };
+        expect(module44.estimateTopUpNeeded(stream, 1000, now)).toBe(0n);
+      });
+
+      it('returns 0n for an open-ended stream when nowSec is far in the future', () => {
+        const stream = { ...mockStream, endTime: 0, ratePerSecond: 50n };
+        expect(module44.estimateTopUpNeeded(stream, 5000, now + 10_000_000)).toBe(0n);
+      });
     });
 
     it('returns 0n for non-positive target runway', () => {
