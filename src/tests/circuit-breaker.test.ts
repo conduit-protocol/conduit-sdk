@@ -32,7 +32,7 @@ describe('CircuitBreaker', () => {
 
     // 3 failures should open the circuit
     for (let i = 0; i < 3; i++) {
-      try { await withCircuitBreaker('scope-b', fail); } catch {}
+      try { await withCircuitBreaker('scope-b', fail); } catch { /* expected */ }
     }
 
     expect(getCircuitState('scope-b')).toBe('open');
@@ -46,7 +46,7 @@ describe('CircuitBreaker', () => {
 
     // 2 failures — not enough to open
     for (let i = 0; i < 2; i++) {
-      try { await withCircuitBreaker('scope-c', fail); } catch {}
+      try { await withCircuitBreaker('scope-c', fail); } catch { /* expected */ }
     }
 
     expect(getCircuitState('scope-c')).toBe('closed');
@@ -56,7 +56,7 @@ describe('CircuitBreaker', () => {
 
     // 2 more failures should still not open because counter was reset
     for (let i = 0; i < 2; i++) {
-      try { await withCircuitBreaker('scope-c', fail); } catch {}
+      try { await withCircuitBreaker('scope-c', fail); } catch { /* expected */ }
     }
 
     expect(getCircuitState('scope-c')).toBe('closed');
@@ -65,7 +65,7 @@ describe('CircuitBreaker', () => {
   it('carries scope on CircuitOpenError', async () => {
     const fail = async () => { throw new Error('boom'); };
     for (let i = 0; i < 3; i++) {
-      try { await withCircuitBreaker('scope-d', fail); } catch {}
+      try { await withCircuitBreaker('scope-d', fail); } catch { /* expected */ }
     }
 
     try {
