@@ -5,7 +5,7 @@ const endpoint = 'https://indexer.streamfi.io/graphql';
 
 function mockFetch(response: unknown, status = 200) {
   return vi.fn(
-    (_uri: string | URL, _options?: RequestInit): Promise<Response> =>
+    (_input: Request | string | URL, _options?: RequestInit): Promise<Response> =>
       Promise.resolve(
         new Response(JSON.stringify(response), { status, headers: { 'Content-Type': 'application/json' } }),
       ),
@@ -34,7 +34,7 @@ describe('GraphQLIndexer mock transport (#607)', () => {
 
     await indexer.query({ query: '{ ping }', variables: { a: 1 } });
 
-    const [, options] = transport.mock.calls[0] as [string, RequestInit];
+    const [, options] = transport.mock.calls[0] as [Request | string | URL, RequestInit];
     expect(options.method).toBe('POST');
     const body = JSON.parse(options.body as string);
     expect(body.query).toBe('{ ping }');

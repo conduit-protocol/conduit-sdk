@@ -76,7 +76,9 @@ export class GraphQLIndexer {
   private readonly transport: typeof fetch | undefined;
 
   constructor(endpointOrOptions: string | GraphQLIndexerOptions) {
-    const endpoint = typeof endpointOrOptions === 'string' ? endpointOrOptions : endpointOrOptions.endpoint;
+    const endpoint = typeof endpointOrOptions === 'string'
+      ? endpointOrOptions
+      : endpointOrOptions?.endpoint;
     if (!endpoint || typeof endpoint !== 'string' || endpoint.trim().length === 0) {
       throw new Error('GraphQLIndexer endpoint must be a non-empty string');
     }
