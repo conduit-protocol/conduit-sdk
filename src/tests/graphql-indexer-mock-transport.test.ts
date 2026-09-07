@@ -6,7 +6,7 @@ const endpoint = 'https://indexer.streamfi.io/graphql';
 function mockFetch(response: unknown, status = 200) {
   const requests: Array<{ input: Request | string | URL; init?: RequestInit }> = [];
   const fn = vi.fn((input: Request | string | URL, init?: RequestInit): Promise<Response> => {
-    requests.push({ input, init: init ? { ...init } : undefined });
+    requests.push(init === undefined ? { input } : { input, init });
     return Promise.resolve(
       new Response(JSON.stringify(response), {
         status,
