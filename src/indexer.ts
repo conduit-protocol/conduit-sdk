@@ -109,17 +109,34 @@ function isPersistedQueryNotFound(body: unknown): boolean {
 }
 
 
+export interface GraphQLIndexerOptions {
+  endpoint: string;
+  /**
+   * Optional transport override for testing or custom networking.
+   * When provided, this function is used instead of the global `fetch`
+   * for all `query()` calls.
+   */
+  transport?: typeof fetch;
+}
+
 export class GraphQLIndexer {
   private endpoint: string;
   private activeSubscriptions: Set<IndexerSubscription> = new Set();
   private isDestroyed = false;
   private subCounter = 0;
+  private readonly transport: typeof fetch | undefined;
 
-  constructor(endpoint: string) {
+  constructor(endpointOrOptions: string | GraphQLIndexerOptions) {
+    const endpoint = typeof endpointOrOptions === 'string'
+      ? endpointOrOptions
+      : endpointOrOptions?.endpoint;
     if (!endpoint || typeof endpoint !== 'string' || endpoint.trim().length === 0) {
       throw new Error('GraphQLIndexer endpoint must be a non-empty string');
     }
     this.endpoint = endpoint;
+    if (typeof endpointOrOptions === 'object' && endpointOrOptions.transport) {
+      this.transport = endpointOrOptions.transport;
+    }
   }
 
   async query(options: GraphQLQueryOptions): Promise<unknown> {
@@ -144,7 +161,7 @@ export class GraphQLIndexer {
       ...options.headers,
     };
 
-    const fetchFn = typeof fetch !== 'undefined' ? fetch : (globalThis as unknown as { fetch?: typeof fetch }).fetch;
+    const fetchFn = this.transport ?? (typeof fetch !== 'undefined' ? fetch : (globalThis as unknown as { fetch?: typeof fetch }).fetch);
     if (typeof fetchFn !== 'function') {
       throw new Error('Fetch API is not available in the current environment');
     }
@@ -482,7 +499,7 @@ export class GraphQLIndexer {
     if (WebSocketCtor) {
       openSocket();
     } else {
-      const fetchFn = typeof fetch !== 'undefined' ? fetch : (globalThis as unknown as { fetch?: typeof fetch }).fetch;
+      const fetchFn = this.transport ?? (typeof fetch !== 'undefined' ? fetch : (globalThis as unknown as { fetch?: typeof fetch }).fetch);
       if (typeof fetchFn === 'function' && typeof AbortController !== 'undefined') {
         abortController = new AbortController();
         const headers: Record<string, string> = {
