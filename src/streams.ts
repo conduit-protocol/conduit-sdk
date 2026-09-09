@@ -1056,11 +1056,12 @@ export class StreamsModule {
 
 // Parsing
 
-function parseStreamInfo(id: bigint, address: string, val: xdr.ScVal): StreamInfo {
+export function parseStreamInfo(id: bigint, address: string, val: xdr.ScVal): StreamInfo {
   const entries = val.map() ?? [];
   const m: Record<string, xdr.ScVal> = {};
   for (const e of entries) {
-    const k = e.key().sym()?.toString('utf8') ?? e.key().str()?.toString('utf8') ?? '';
+    const keyVal = e.key();
+    const k = keyVal.switch().name === 'scvSymbol' ? keyVal.sym().toString('utf8') : keyVal.switch().name === 'scvString' ? keyVal.str().toString('utf8') : '';
     m[k] = e.val();
   }
   // `paused`, `cancelled` and `clawback_enabled` are NOT fields on the
